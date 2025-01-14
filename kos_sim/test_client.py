@@ -1,14 +1,12 @@
 """Test script for the simulation server."""
 
 import argparse
-import logging
 import math
 import time
 
 import pykos
 
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+from kos_sim import logger
 
 
 def test_actuator_commands(host: str = "localhost", port: int = 50051) -> None:

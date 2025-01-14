@@ -1,13 +1,9 @@
 """Test script for the simulator."""
 
 import argparse
-import logging
 import time
 
 from kos_sim.simulator import MujocoSimulator
-
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
 
 
 def test_simulation(model_path: str, duration: float = 5.0, speed: float = 1.0, render: bool = True) -> None:

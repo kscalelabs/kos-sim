@@ -1,16 +1,13 @@
 """Wrapper around MuJoCo simulation."""
 
-import logging
 import threading
 
 import mujoco
 import mujoco_viewer
 import numpy as np
 
+from kos_sim import logger
 from kos_sim.config import SimulatorConfig
-
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
 
 
 class MujocoSimulator:
@@ -19,7 +16,6 @@ class MujocoSimulator:
         model_path: str,
         config: SimulatorConfig | None = None,
         render: bool = False,
-        dt: float = 0.002,
         gravity: bool = True,
         suspended: bool = False,
     ) -> None:
@@ -28,7 +24,7 @@ class MujocoSimulator:
 
         # Load MuJoCo model and initialize data
         self._model = mujoco.MjModel.from_xml_path(model_path)
-        self._model.opt.timestep = dt
+        self._model.opt.timestep = self._config.dt  # Use dt from config
         self._data = mujoco.MjData(self._model)
 
         self._gravity = gravity
@@ -114,8 +110,8 @@ class MujocoSimulator:
             for i in range(self._model.njnt):
                 if self._model.jnt_type[i] == mujoco.mjtJoint.mjJNT_FREE:
                     print(f"Joint name: {self._model.joint(i).name}")
-                    self._data.qpos[i:i + 7] = self._model.keyframe("default").qpos[i:i + 7]
-                    self._data.qvel[i:i + 6] = 0
+                    self._data.qpos[i : i + 7] = self._model.keyframe("default").qpos[i : i + 7]
+                    self._data.qvel[i : i + 6] = 0
                     break
 
         if self._render_enabled:

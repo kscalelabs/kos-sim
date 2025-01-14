@@ -1,7 +1,6 @@
 """Server and simulation loop for KOS."""
 
 import argparse
-import logging
 import threading
 import time
 from concurrent import futures
@@ -9,21 +8,14 @@ from concurrent import futures
 import grpc
 from kos_protos import actuator_pb2_grpc, imu_pb2_grpc
 
+from kos_sim import logger
+from kos_sim.config import SimulatorConfig
 from kos_sim.services import ActuatorService, IMUService
 from kos_sim.simulator import MujocoSimulator
-from kos_sim.config import SimulatorConfig
-
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
 
 
 class SimulationServer:
-    def __init__(
-        self, 
-        model_path: str, 
-        config_path: str | None = None,
-        port: int = 50051
-    ) -> None:
+    def __init__(self, model_path: str, config_path: str | None = None, port: int = 50051) -> None:
         if config_path:
             config = SimulatorConfig.from_file(config_path)
         else:
@@ -61,13 +53,13 @@ class SimulationServer:
         self._grpc_thread = threading.Thread(target=self._grpc_server_loop)
         self._grpc_thread.start()
 
-        physics_dt = 1.0 / self.simulator._config.physics_freq
         try:
             while not self._stop_event.is_set():
                 process_start = time.time()
                 self.simulator.step()
-                # Sleep to maintain physics frequency
-                time.sleep(max(0, physics_dt - (time.time() - process_start)))
+                sleep_time = max(0, self.simulator._config.dt - (time.time() - process_start))
+                logger.debug("Sleeping for %f seconds", sleep_time)
+                time.sleep(sleep_time)
         except KeyboardInterrupt:
             self.stop()
 

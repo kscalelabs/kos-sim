@@ -40,9 +40,7 @@ class ActuatorService(actuator_pb2_grpc.ActuatorServiceServicer):
             return actuator_pb2.GetActuatorsStateResponse(
                 states=[
                     actuator_pb2.ActuatorStateResponse(
-                        actuator_id=joint_id,
-                        position=math.degrees(float(state)),
-                        online=True
+                        actuator_id=joint_id, position=math.degrees(float(state)), online=True
                     )
                     for joint_id, state in states.items()
                 ]

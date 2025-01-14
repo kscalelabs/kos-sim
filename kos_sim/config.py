@@ -14,8 +14,13 @@ class SimulatorConfig:
     joint_name_to_id: dict[str, int]
     kp: float = 80.0
     kd: float = 10.0
-    physics_freq: float = 1000.0  # Hz
-    command_freq: float = 50.0    # Hz
+    dt: float = 0.02
+    command_freq: float = 50.0  # Hz
+
+    @property
+    def physics_freq(self) -> float:
+        """Calculate physics frequency from timestep."""
+        return 1.0 / self.dt
 
     @property
     def sim_decimation(self) -> int:
@@ -37,7 +42,7 @@ class SimulatorConfig:
             joint_name_to_id=joint_name_to_id,
             kp=control_config.get("kp", 80.0),
             kd=control_config.get("kd", 10.0),
-            physics_freq=control_config.get("physics_freq", 1000.0),
+            dt=control_config.get("dt", 0.001),
             command_freq=control_config.get("command_freq", 50.0),
         )
 
