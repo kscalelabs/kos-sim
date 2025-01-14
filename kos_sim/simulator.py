@@ -83,11 +83,18 @@ class MujocoSimulator:
         self._kp = np.array([self._config.kp] * self._model.nu)
         self._kd = np.array([self._config.kd] * self._model.nu)
 
+        self._count_lowlevel = 0
+        self._target_positions: dict[str, float] = {}  # Store target positions between updates
+
     def step(self) -> None:
         """Execute one step of the simulation."""
         with self._lock:
+            # Only update commands every sim_decimation steps
+            if self._count_lowlevel % self._config.sim_decimation == 0:
+                self._target_positions = self._current_commands.copy()
+
             # Apply actuator commands using PD control
-            for name, target_pos in self._current_commands.items():
+            for name, target_pos in self._target_positions.items():
                 actuator_id = self._actuator_ids[name]
                 current_pos = self._data.qpos[actuator_id]
                 current_vel = self._data.qvel[actuator_id]
@@ -99,16 +106,16 @@ class MujocoSimulator:
         # Step physics
         mujoco.mj_step(self._model, self._data)
 
-        # If suspended, maintain position and orientation
-        if self._suspended and self._initial_pos is not None:
-            # Find the free joint
+        # Increment counter
+        self._count_lowlevel += 1
+
+        if self._suspended:
+            # Find the root joint (floating_base)
             for i in range(self._model.njnt):
                 if self._model.jnt_type[i] == mujoco.mjtJoint.mjJNT_FREE:
-                    # Reset position and orientation
-                    self._data.qpos[i : i + 3] = self._initial_pos
-                    self._data.qpos[i + 3 : i + 7] = self._initial_quat
-                    # Zero out velocities
-                    self._data.qvel[i : i + 6] = 0
+                    print(f"Joint name: {self._model.joint(i).name}")
+                    self._data.qpos[i:i + 7] = self._model.keyframe("default").qpos[i:i + 7]
+                    self._data.qvel[i:i + 6] = 0
                     break
 
         if self._render_enabled:

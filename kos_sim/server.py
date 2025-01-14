@@ -11,14 +11,24 @@ from kos_protos import actuator_pb2_grpc, imu_pb2_grpc
 
 from kos_sim.services import ActuatorService, IMUService
 from kos_sim.simulator import MujocoSimulator
+from kos_sim.config import SimulatorConfig
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
 class SimulationServer:
-    def __init__(self, model_path: str, port: int = 50051, dt: float = 0.002) -> None:
-        self.simulator = MujocoSimulator(model_path, dt=dt, render=True, suspended=False)
+    def __init__(
+        self, 
+        model_path: str, 
+        config_path: str | None = None,
+        port: int = 50051
+    ) -> None:
+        if config_path:
+            config = SimulatorConfig.from_file(config_path)
+        else:
+            config = SimulatorConfig.default()
+        self.simulator = MujocoSimulator(model_path, config=config, render=True)
         self.port = port
         self._stop_event = threading.Event()
         self._grpc_thread: threading.Thread | None = None
@@ -48,15 +58,16 @@ class SimulationServer:
 
     def start(self) -> None:
         """Start the gRPC server and run simulation in main thread."""
-        # Start gRPC server in separate thread
         self._grpc_thread = threading.Thread(target=self._grpc_server_loop)
         self._grpc_thread.start()
 
-        # Run simulation in main thread
+        physics_dt = 1.0 / self.simulator._config.physics_freq
         try:
             while not self._stop_event.is_set():
+                process_start = time.time()
                 self.simulator.step()
-                time.sleep(self.simulator._model.opt.timestep)
+                # Sleep to maintain physics frequency
+                time.sleep(max(0, physics_dt - (time.time() - process_start)))
         except KeyboardInterrupt:
             self.stop()
 
@@ -71,8 +82,8 @@ class SimulationServer:
         self.simulator.close()
 
 
-def serve(model_path: str, port: int = 50051) -> None:
-    server = SimulationServer(model_path, port)
+def serve(model_path: str, config_path: str | None = None, port: int = 50051) -> None:
+    server = SimulationServer(model_path, config_path=config_path, port=port)
     server.start()
 
 
@@ -80,6 +91,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Start the simulation gRPC server.")
     parser.add_argument("--model-path", type=str, required=True, help="Path to MuJoCo XML model file")
     parser.add_argument("--port", type=int, default=50051, help="Port to listen on")
+    parser.add_argument("--config-path", type=str, default=None, help="Path to config file")
 
     args = parser.parse_args()
-    serve(args.model_path, args.port)
+    serve(args.model_path, args.config_path, args.port)

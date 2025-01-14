@@ -21,7 +21,7 @@ def test_actuator_commands(host: str = "localhost", port: int = 50051) -> None:
     frequency = 1.0  # Hz
     amplitude = 45.0  # degrees
     duration = 5.0  # seconds
-    actuator_id = 1
+    actuator_id = 2
 
     logger.info("Starting actuator command test...")
 

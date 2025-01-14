@@ -1,5 +1,7 @@
 """Service implementations for MuJoCo simulation."""
 
+import math
+
 import grpc
 from google.protobuf import empty_pb2
 from kos_protos import actuator_pb2, actuator_pb2_grpc, imu_pb2, imu_pb2_grpc
@@ -18,7 +20,7 @@ class ActuatorService(actuator_pb2_grpc.ActuatorServiceServicer):
     ) -> actuator_pb2.CommandActuatorsResponse:
         """Implements CommandActuators by forwarding to simulator."""
         try:
-            commands = {cmd.actuator_id: cmd.position for cmd in request.commands}
+            commands = {cmd.actuator_id: math.radians(cmd.position) for cmd in request.commands}
             self.simulator.command_actuators(commands)
             return actuator_pb2.CommandActuatorsResponse()
         except Exception as e:
@@ -37,7 +39,11 @@ class ActuatorService(actuator_pb2_grpc.ActuatorServiceServicer):
             }
             return actuator_pb2.GetActuatorsStateResponse(
                 states=[
-                    actuator_pb2.ActuatorStateResponse(actuator_id=joint_id, position=float(state), online=True)
+                    actuator_pb2.ActuatorStateResponse(
+                        actuator_id=joint_id,
+                        position=math.degrees(float(state)),
+                        online=True
+                    )
                     for joint_id, state in states.items()
                 ]
             )

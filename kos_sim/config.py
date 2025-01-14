@@ -12,8 +12,15 @@ logger = logging.getLogger(__name__)
 class SimulatorConfig:
     joint_id_to_name: dict[int, str]
     joint_name_to_id: dict[str, int]
-    kp: float = 32.0
+    kp: float = 80.0
     kd: float = 10.0
+    physics_freq: float = 1000.0  # Hz
+    command_freq: float = 50.0    # Hz
+
+    @property
+    def sim_decimation(self) -> int:
+        """Calculate decimation factor to achieve desired command frequency."""
+        return max(1, int(self.physics_freq / self.command_freq))
 
     @classmethod
     def from_file(cls, config_path: str) -> "SimulatorConfig":
@@ -21,15 +28,18 @@ class SimulatorConfig:
         with open(config_path, "r") as f:
             config_data = yaml.safe_load(f)
 
-        # Load joint mappings
         joint_name_to_id = config_data.get("joint_mappings", {})
         joint_id_to_name = {v: k for k, v in joint_name_to_id.items()}
 
-        # Load control parameters
-        kp = config_data.get("control", {}).get("kp", 1.0)
-        kd = config_data.get("control", {}).get("kd", 0.1)
-
-        return cls(joint_id_to_name=joint_id_to_name, joint_name_to_id=joint_name_to_id, kp=kp, kd=kd)
+        control_config = config_data.get("control", {})
+        return cls(
+            joint_id_to_name=joint_id_to_name,
+            joint_name_to_id=joint_name_to_id,
+            kp=control_config.get("kp", 80.0),
+            kd=control_config.get("kd", 10.0),
+            physics_freq=control_config.get("physics_freq", 1000.0),
+            command_freq=control_config.get("command_freq", 50.0),
+        )
 
     @classmethod
     def default(cls) -> "SimulatorConfig":
