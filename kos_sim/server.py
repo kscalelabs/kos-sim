@@ -6,11 +6,11 @@ import time
 from concurrent import futures
 
 import grpc
-from kos_protos import actuator_pb2_grpc, imu_pb2_grpc
+from kos_protos import actuator_pb2_grpc, imu_pb2_grpc, sim_pb2_grpc
 
 from kos_sim import logger
 from kos_sim.config import SimulatorConfig
-from kos_sim.services import ActuatorService, IMUService
+from kos_sim.services import ActuatorService, IMUService, SimService
 from kos_sim.simulator import MujocoSimulator
 
 
@@ -36,9 +36,11 @@ class SimulationServer:
         # Add our services
         actuator_service = ActuatorService(self.simulator)
         imu_service = IMUService(self.simulator)
+        sim_service = SimService(self.simulator)
 
         actuator_pb2_grpc.add_ActuatorServiceServicer_to_server(actuator_service, self._server)
         imu_pb2_grpc.add_IMUServiceServicer_to_server(imu_service, self._server)
+        sim_pb2_grpc.add_SimulationServiceServicer_to_server(sim_service, self._server)
 
         # Start the server
         self._server.add_insecure_port(f"[::]:{self.port}")

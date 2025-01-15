@@ -14,7 +14,7 @@ class SimulatorConfig:
     joint_name_to_id: dict[str, int]
     kp: float = 80.0
     kd: float = 10.0
-    dt: float = 0.02
+    dt: float = 0.01
     command_freq: float = 50.0  # Hz
 
     @property

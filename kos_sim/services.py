@@ -4,9 +4,116 @@ import math
 
 import grpc
 from google.protobuf import empty_pb2
-from kos_protos import actuator_pb2, actuator_pb2_grpc, imu_pb2, imu_pb2_grpc
+from kos_protos import actuator_pb2, actuator_pb2_grpc, common_pb2, imu_pb2, imu_pb2_grpc, sim_pb2, sim_pb2_grpc
 
+from kos_sim import logger
 from kos_sim.simulator import MujocoSimulator
+
+
+class SimService(sim_pb2_grpc.SimulationServiceServicer):
+    """Implementation of SimService that wraps a MuJoCo simulation."""
+
+    def __init__(self, simulator: MujocoSimulator) -> None:
+        self.simulator = simulator
+        self._paused = False
+
+    def Reset(self, request: sim_pb2.ResetRequest, context: grpc.ServicerContext) -> common_pb2.ActionResponse:  # noqa: N802
+        """Reset the simulation to initial or specified state."""
+        logger.info("Reset request received: %s", request)
+        try:
+            if request.HasField("initial_state"):
+                qpos = list(request.initial_state.qpos)
+                logger.debug("Resetting with qpos: %s", qpos)
+                self.simulator.reset(position=None, orientation=qpos[3:7] if len(qpos) >= 7 else None)
+            else:
+                logger.debug("Resetting to default state")
+                self.simulator.reset()
+            return common_pb2.ActionResponse(success=True)
+        except Exception as e:
+            logger.error("Reset failed: %s", e)
+            context.set_code(grpc.StatusCode.INTERNAL)
+            context.set_details(str(e))
+            return common_pb2.ActionResponse(success=False, error=str(e))
+
+    def SetPaused(self, request: sim_pb2.SetPausedRequest, context: grpc.ServicerContext) -> common_pb2.ActionResponse:  # noqa: N802
+        """Pause or unpause the simulation."""
+        logger.info("SetPaused request received: paused=%s", request.paused)
+        try:
+            self._paused = request.paused
+            return common_pb2.ActionResponse(success=True)
+        except Exception as e:
+            logger.error("SetPaused failed: %s", e)
+            context.set_code(grpc.StatusCode.INTERNAL)
+            context.set_details(str(e))
+            return common_pb2.ActionResponse(success=False, error=str(e))
+
+    def Step(self, request: sim_pb2.StepRequest, context: grpc.ServicerContext) -> common_pb2.ActionResponse:  # noqa: N802
+        """Step the simulation forward."""
+        logger.info(
+            "Step request received: num_steps=%d, step_size=%s",
+            request.num_steps,
+            request.step_size if request.HasField("step_size") else "default",
+        )
+        try:
+            if request.HasField("step_size"):
+                original_dt = self.simulator._model.opt.timestep
+                self.simulator._model.opt.timestep = request.step_size
+                logger.debug("Changed timestep from %f to %f", original_dt, request.step_size)
+
+            for _ in range(request.num_steps):
+                if not self._paused:
+                    self.simulator.step()
+
+            if request.HasField("step_size"):
+                self.simulator._model.opt.timestep = original_dt
+                logger.debug("Restored timestep to %f", original_dt)
+
+            return common_pb2.ActionResponse(success=True)
+        except Exception as e:
+            logger.error("Step failed: %s", e)
+            context.set_code(grpc.StatusCode.INTERNAL)
+            context.set_details(str(e))
+            return common_pb2.ActionResponse(success=False, error=str(e))
+
+    def SetParameters(  # noqa: N802
+        self, request: sim_pb2.SetParametersRequest, context: grpc.ServicerContext
+    ) -> common_pb2.ActionResponse:
+        """Set simulation parameters."""
+        logger.info("SetParameters request received: %s", request)
+        try:
+            params = request.parameters
+            if params.HasField("time_scale"):
+                logger.debug("Setting time scale to %f", params.time_scale)
+                self.simulator._model.opt.timestep = self.simulator._config.dt / params.time_scale
+            if params.HasField("gravity"):
+                logger.debug("Setting gravity to %f", params.gravity)
+                self.simulator._model.opt.gravity[2] = params.gravity
+            if params.HasField("initial_state"):
+                logger.debug("Setting initial state: %s", params.initial_state)
+                qpos = list(params.initial_state.qpos)
+                self.simulator.reset(position=None, orientation=qpos[3:7] if len(qpos) >= 7 else None)
+            return common_pb2.ActionResponse(success=True)
+        except Exception as e:
+            logger.error("SetParameters failed: %s", e)
+            context.set_code(grpc.StatusCode.INTERNAL)
+            context.set_details(str(e))
+            return common_pb2.ActionResponse(success=False, error=str(e))
+
+    def GetParameters(self, request: empty_pb2.Empty, context: grpc.ServicerContext) -> sim_pb2.GetParametersResponse:  # noqa: N802
+        """Get current simulation parameters."""
+        logger.info("GetParameters request received")
+        try:
+            params = sim_pb2.SimulationParameters(
+                time_scale=self.simulator._config.dt / self.simulator._model.opt.timestep,
+                gravity=float(self.simulator._model.opt.gravity[2]),
+            )
+            logger.debug("Current parameters: time_scale=%f, gravity=%f", params.time_scale, params.gravity)
+            return sim_pb2.GetParametersResponse(parameters=params)
+        except Exception as e:
+            logger.error("GetParameters failed: %s", e)
+            context.set_code(grpc.StatusCode.INTERNAL)
+            context.set_details(str(e))
+            return sim_pb2.GetParametersResponse(error=common_pb2.Error(message=str(e)))
 
 
 class ActuatorService(actuator_pb2_grpc.ActuatorServiceServicer):
