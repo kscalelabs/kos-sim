@@ -12,15 +12,24 @@ from kos_sim import logger
 from kos_sim.config import SimulatorConfig
 from kos_sim.services import ActuatorService, IMUService, SimService
 from kos_sim.simulator import MujocoSimulator
+from kos_sim.stepping import StepController, StepMode
 
 
 class SimulationServer:
-    def __init__(self, model_path: str, config_path: str | None = None, port: int = 50051) -> None:
+    def __init__(
+        self,
+        model_path: str,
+        config_path: str | None = None,
+        port: int = 50051,
+        step_mode: StepMode = StepMode.CONTINUOUS,
+    ) -> None:
         if config_path:
             config = SimulatorConfig.from_file(config_path)
         else:
             config = SimulatorConfig.default()
+
         self.simulator = MujocoSimulator(model_path, config=config, render=True)
+        self.step_controller = StepController(self.simulator, mode=step_mode)
         self.port = port
         self._stop_event = threading.Event()
         self._grpc_thread: threading.Thread | None = None
@@ -58,10 +67,13 @@ class SimulationServer:
         try:
             while not self._stop_event.is_set():
                 process_start = time.time()
-                self.simulator.step()
+
+                if self.step_controller.should_step():
+                    self.simulator.step()
+
                 sleep_time = max(0, self.simulator._config.dt - (time.time() - process_start))
-                logger.debug("Sleeping for %f seconds", sleep_time)
                 time.sleep(sleep_time)
+
         except KeyboardInterrupt:
             self.stop()
 
