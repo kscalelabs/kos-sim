@@ -16,8 +16,8 @@ def test_sim_commands(host: str = "localhost", port: int = 50051) -> None:
 
     # Test parameters
     frequency = 1.0  # Hz
-    amplitude = 45.0  # degrees
-    duration = 5.0  # seconds
+    _amplitude = 45.0  # degrees
+    _duration = 5.0  # seconds
 
     # Send command
     sim.set_parameters(time_scale=frequency)

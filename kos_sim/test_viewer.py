@@ -1,7 +1,9 @@
+"""Test script for the viewer."""
+
 import mujoco
 import mujoco_viewer
 
-model = mujoco.MjModel.from_xml_path('models/gpr/robot_fixed.xml')
+model = mujoco.MjModel.from_xml_path("models/gpr/robot_fixed.xml")
 data = mujoco.MjData(model)
 
 # create the viewer object
