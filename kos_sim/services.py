@@ -18,7 +18,7 @@ class SimService(sim_pb2_grpc.SimulationServiceServicer):
         self.simulator = simulator
         self.step_controller = step_controller
 
-    def Reset(
+    def Reset( # noqa: N802
         self, request: sim_pb2.ResetRequest, context: grpc.ServicerContext
     ) -> common_pb2.ActionResponse:  # noqa: N802
         """Reset the simulation to initial or specified state."""
@@ -38,7 +38,7 @@ class SimService(sim_pb2_grpc.SimulationServiceServicer):
             context.set_details(str(e))
             return common_pb2.ActionResponse(success=False, error=str(e))
 
-    def SetPaused(
+    def SetPaused( # noqa: N802
         self, request: sim_pb2.SetPausedRequest, context: grpc.ServicerContext
     ) -> common_pb2.ActionResponse:  # noqa: N802
         """Pause or unpause the simulation."""
@@ -52,7 +52,7 @@ class SimService(sim_pb2_grpc.SimulationServiceServicer):
             context.set_details(str(e))
             return common_pb2.ActionResponse(success=False, error=str(e))
 
-    def Step(
+    def Step( # noqa: N802
         self, request: sim_pb2.StepRequest, context: grpc.ServicerContext
     ) -> common_pb2.ActionResponse:  # noqa: N802
         """Step the simulation forward."""
@@ -102,9 +102,9 @@ class SimService(sim_pb2_grpc.SimulationServiceServicer):
             context.set_details(str(e))
             return common_pb2.ActionResponse(success=False, error=str(e))
 
-    def GetParameters(
+    def GetParameters( # noqa: N802
         self, request: empty_pb2.Empty, context: grpc.ServicerContext
-    ) -> sim_pb2.GetParametersResponse:  # noqa: N802
+    ) -> sim_pb2.GetParametersResponse:
         """Get current simulation parameters."""
         logger.info("GetParameters request received")
         try:
