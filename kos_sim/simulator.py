@@ -1,6 +1,7 @@
 """Wrapper around MuJoCo simulation."""
 
 import threading
+from pathlib import Path
 
 import mujoco
 import mujoco_viewer
@@ -13,7 +14,7 @@ from kos_sim.config import SimulatorConfig
 class MujocoSimulator:
     def __init__(
         self,
-        model_path: str,
+        model_path: str | Path,
         config: SimulatorConfig | None = None,
         render: bool = False,
         gravity: bool = True,
@@ -23,7 +24,7 @@ class MujocoSimulator:
         self._config = config or SimulatorConfig.default()
 
         # Load MuJoCo model and initialize data
-        self._model = mujoco.MjModel.from_xml_path(model_path)
+        self._model = mujoco.MjModel.from_xml_path(str(model_path))
         self._model.opt.timestep = self._config.dt  # Use dt from config
         self._data = mujoco.MjData(self._model)
 
@@ -34,14 +35,6 @@ class MujocoSimulator:
 
         if not self._gravity:
             self._model.opt.gravity[2] = 0.0
-
-        # Initialize default position from keyframe if available
-        try:
-            self._data.qpos = self._model.keyframe("default").qpos
-            logger.info("Loaded default position from keyframe")
-        except Exception:
-            logger.warning("No default keyframe found, using zero initialization")
-            self._data.qpos = np.zeros_like(self._data.qpos)
 
         # If suspended, store initial position and orientation
         if self._suspended:
@@ -114,6 +107,9 @@ class MujocoSimulator:
                     self._data.qvel[i : i + 6] = 0
                     break
 
+        return self._data
+
+    def render(self) -> None:
         if self._render_enabled:
             self._viewer.render()
 
@@ -197,3 +193,7 @@ class MujocoSimulator:
             except Exception as e:
                 logger.error("Error closing viewer: %s", e)
             self._viewer = None
+
+    @property
+    def timestep(self) -> float:
+        return self._model.opt.timestep
