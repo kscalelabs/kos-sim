@@ -1,13 +1,11 @@
+"""Defines the KOS Simulator package API."""
+
 import logging
 
-# Configure root logger
-logging.basicConfig(
-    level=logging.DEBUG,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    handlers=[logging.StreamHandler()],
-)
+import colorlogging
 
-# Get logger for this package
+colorlogging.configure()
+
 logger = logging.getLogger("kos_sim")
 
 __version__ = "0.0.1"
