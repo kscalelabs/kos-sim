@@ -207,10 +207,10 @@ async def test_simulation_adhoc(
     model_name: str, duration: float = 5.0, speed: float = 1.0, render: bool = True
 ) -> None:
     api = K()
-    bot_dir = await api.download_and_extract_urdf(model_name)
-    bot_mjcf = next(bot_dir.glob("*.mjcf"))
+    model_dir = await api.download_and_extract_urdf(model_name)
+    model_path = next(model_dir.glob("*.mjcf"))
 
-    simulator = MujocoSimulator(bot_mjcf, render=render)
+    simulator = MujocoSimulator(model_path, render=render)
 
     timestep = simulator.timestep
     initial_update = last_update = asyncio.get_event_loop().time()

@@ -108,4 +108,5 @@ def main() -> None:
 
 
 if __name__ == "__main__":
+    # python -m kos_sim.test_client
     main()

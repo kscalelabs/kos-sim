@@ -50,15 +50,15 @@ class SimulatorConfig:
     def default(cls) -> "SimulatorConfig":
         """Create default config with standard joint mappings."""
         joint_name_to_id = {
-            "L_hip_y": 1,
-            "L_hip_x": 2,
-            "L_hip_z": 3,
-            "L_knee": 4,
-            "L_ankle_y": 5,
-            "R_hip_y": 6,
-            "R_hip_x": 7,
-            "R_hip_z": 8,
-            "R_knee": 9,
-            "R_ankle_y": 10,
+            "L_hip_y_04": 1,
+            "L_hip_x_03": 2,
+            "L_hip_z_03": 3,
+            "L_knee_04": 4,
+            "L_ankle_02": 5,
+            "R_hip_y_04": 6,
+            "R_hip_x_03": 7,
+            "R_hip_z_03": 8,
+            "R_knee_04": 9,
+            "R_ankle_02": 10,
         }
         return cls(joint_id_to_name={v: k for k, v in joint_name_to_id.items()}, joint_name_to_id=joint_name_to_id)
