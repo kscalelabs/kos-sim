@@ -5,6 +5,7 @@ import threading
 import time
 from concurrent import futures
 
+import colorlogging
 import grpc
 from kos_protos import actuator_pb2_grpc, imu_pb2_grpc, sim_pb2_grpc
 
@@ -93,11 +94,17 @@ def serve(model_path: str, config_path: str | None = None, port: int = 50051) ->
     server.start()
 
 
-if __name__ == "__main__":
+def run_server() -> None:
     parser = argparse.ArgumentParser(description="Start the simulation gRPC server.")
     parser.add_argument("--model-path", type=str, required=True, help="Path to MuJoCo XML model file")
     parser.add_argument("--port", type=int, default=50051, help="Port to listen on")
     parser.add_argument("--config-path", type=str, default=None, help="Path to config file")
 
+    colorlogging.configure()
+
     args = parser.parse_args()
     serve(args.model_path, args.config_path, args.port)
+
+
+if __name__ == "__main__":
+    run_server()

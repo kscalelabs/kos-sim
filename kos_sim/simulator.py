@@ -5,6 +5,7 @@ import asyncio
 import threading
 from pathlib import Path
 
+import colorlogging
 import mujoco
 import mujoco_viewer
 import numpy as np
@@ -236,6 +237,8 @@ async def main() -> None:
     parser.add_argument("--duration", type=float, default=5.0, help="Duration to run simulation (seconds)")
     parser.add_argument("--speed", type=float, default=1.0, help="Simulation speed multiplier")
     parser.add_argument("--no-render", action="store_true", help="Disable rendering")
+
+    colorlogging.configure()
 
     args = parser.parse_args()
     await test_simulation_adhoc(

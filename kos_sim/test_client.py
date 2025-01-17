@@ -94,7 +94,7 @@ def test_sim_service(host: str = "localhost", port: int = 50051) -> None:
         logger.error("Test failed: %s", e)
 
 
-if __name__ == "__main__":
+def main() -> None:
     parser = argparse.ArgumentParser(description="Test the simulation server with actuator commands.")
     parser.add_argument("--host", type=str, default="localhost", help="Server host")
     parser.add_argument("--port", type=int, default=50051, help="Server port")
@@ -105,3 +105,7 @@ if __name__ == "__main__":
         test_actuator_commands(args.host, args.port)
     else:
         test_sim_service(args.host, args.port)
+
+
+if __name__ == "__main__":
+    main()
