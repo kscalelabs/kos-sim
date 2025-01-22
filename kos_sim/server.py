@@ -4,33 +4,30 @@ import argparse
 import asyncio
 import time
 from concurrent import futures
+from pathlib import Path
 
 import colorlogging
 import grpc
 from kos_protos import actuator_pb2_grpc, imu_pb2_grpc, sim_pb2_grpc
 from kscale import K
+from kscale.web.gen.api import RobotURDFMetadataOutput
 
 from kos_sim import logger
-from kos_sim.config import SimulatorConfig
 from kos_sim.services import ActuatorService, IMUService, SimService
 from kos_sim.simulator import MujocoSimulator
 from kos_sim.stepping import StepController, StepMode
+from kos_sim.utils import get_sim_artifacts_path
 
 
 class SimulationServer:
     def __init__(
         self,
-        model_path: str,
-        config_path: str | None = None,
+        model_path: str | Path,
+        model_metadata: RobotURDFMetadataOutput,
         port: int = 50051,
         step_mode: StepMode = StepMode.CONTINUOUS,
     ) -> None:
-        if config_path:
-            config = SimulatorConfig.from_file(config_path)
-        else:
-            config = SimulatorConfig.default()
-
-        self.simulator = MujocoSimulator(model_path, config=config, render=True)
+        self.simulator = MujocoSimulator(model_path, model_metadata, render=True)
         self.step_controller = StepController(self.simulator, mode=step_mode)
         self.port = port
         self._stop_event = asyncio.Event()
@@ -102,9 +99,25 @@ class SimulationServer:
         self.simulator.close()
 
 
+async def get_model_metadata(api: K, model_name: str) -> RobotURDFMetadataOutput:
+    model_path = get_sim_artifacts_path() / model_name / "metadata.json"
+    if model_path.exists():
+        return RobotURDFMetadataOutput.model_validate_json(model_path.read_text())
+    model_path.parent.mkdir(parents=True, exist_ok=True)
+    model_metadata = await api.get_robot_class(model_name)
+    model_path.write_text(model_metadata.model_dump_json())
+    return model_metadata
+
+
 async def serve(model_name: str, config_path: str | None = None, port: int = 50051) -> None:
     api = K()
-    model_dir = await api.download_and_extract_urdf(model_name)
+    model_dir, model_metadata = await asyncio.gather(
+        api.download_and_extract_urdf(model_name),
+        get_model_metadata(api, model_name),
+    )
+
+    breakpoint()
+
     model_path = next(model_dir.glob("*.mjcf"))
 
     server = SimulationServer(model_path, config_path=config_path, port=port)
@@ -123,6 +136,10 @@ async def run_server() -> None:
     await serve(args.model_name, args.config_path, args.port)
 
 
+def main() -> None:
+    asyncio.run(run_server())
+
+
 if __name__ == "__main__":
     # python -m kos_sim.server
-    asyncio.run(run_server())
+    main()

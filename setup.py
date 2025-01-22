@@ -37,9 +37,9 @@ setup(
     tests_require=requirements_dev,
     extras_require={"dev": requirements_dev},
     packages=["kos_sim"],
-    # entry_points={
-    #     "console_scripts": [
-    #         "kos-sim.cli:main",
-    #     ],
-    # },
+    entry_points={
+        "console_scripts": [
+            "kos-sim=kos_sim.server:main",
+        ],
+    },
 )

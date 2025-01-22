@@ -10,22 +10,22 @@ import mujoco
 import mujoco_viewer
 import numpy as np
 from kscale import K
+from kscale.web.gen.api import RobotURDFMetadataOutput
 
 from kos_sim import logger
-from kos_sim.config import SimulatorConfig
 
 
 class MujocoSimulator:
     def __init__(
         self,
         model_path: str | Path,
-        config: SimulatorConfig | None = None,
+        model_metadata: RobotURDFMetadataOutput,
         render: bool = False,
         gravity: bool = True,
         suspended: bool = False,
     ) -> None:
         # Load config or use default
-        self._config = config or SimulatorConfig.default()
+        self._metadata = model_metadata
 
         # Load MuJoCo model and initialize data
         self._model = mujoco.MjModel.from_xml_path(str(model_path))
