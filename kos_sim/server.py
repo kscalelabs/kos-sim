@@ -14,7 +14,7 @@ from kscale.web.gen.api import RobotURDFMetadataOutput
 
 from kos_sim import logger
 from kos_sim.services import ActuatorService, IMUService, SimService
-from kos_sim.simulator import MujocoSimulator
+from kos_sim.mujoco_simulator import MujocoSimulator
 from kos_sim.stepping import StepController, StepMode
 from kos_sim.utils import get_sim_artifacts_path
 
@@ -24,10 +24,11 @@ class SimulationServer:
         self,
         model_path: str | Path,
         model_metadata: RobotURDFMetadataOutput,
+        config_path: str | Path,
         port: int = 50051,
         step_mode: StepMode = StepMode.CONTINUOUS,
     ) -> None:
-        self.simulator = MujocoSimulator(model_path, model_metadata, render=True)
+        self.simulator = MujocoSimulator(model_path, model_metadata, config_path, render=True)
         self.step_controller = StepController(self.simulator, mode=step_mode)
         self.port = port
         self._stop_event = asyncio.Event()
@@ -69,6 +70,8 @@ class SimulationServer:
                     while sim_time > 0:
                         self.simulator.step()
                         sim_time -= self.simulator.timestep
+                else:
+                    logger.info("Simulation is paused")
 
                 self.simulator.render()
                 # Add a small sleep to prevent the loop from consuming too much CPU
@@ -116,11 +119,11 @@ async def serve(model_name: str, config_path: str | None = None, port: int = 500
         get_model_metadata(api, model_name),
     )
 
-    breakpoint()
+    # breakpoint()
 
     model_path = next(model_dir.glob("*.mjcf"))
 
-    server = SimulationServer(model_path, config_path=config_path, port=port)
+    server = SimulationServer(model_path, model_metadata=model_metadata, config_path=config_path, port=port)
     await server.start()
 
 
@@ -128,7 +131,7 @@ async def run_server() -> None:
     parser = argparse.ArgumentParser(description="Start the simulation gRPC server.")
     parser.add_argument("model_name", type=str, help="Name of the model to simulate")
     parser.add_argument("--port", type=int, default=50051, help="Port to listen on")
-    parser.add_argument("--config-path", type=str, default=None, help="Path to config file")
+    parser.add_argument("--config_path", type=str, default=None, help="Path to config file")
 
     colorlogging.configure()
 

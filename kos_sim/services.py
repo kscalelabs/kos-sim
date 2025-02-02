@@ -7,7 +7,7 @@ from google.protobuf import empty_pb2
 from kos_protos import actuator_pb2, actuator_pb2_grpc, common_pb2, imu_pb2, imu_pb2_grpc, sim_pb2, sim_pb2_grpc
 
 from kos_sim import logger
-from kos_sim.simulator import MujocoSimulator
+from kos_sim.mujoco_simulator import MujocoSimulator
 from kos_sim.stepping import StepController
 
 
@@ -23,14 +23,16 @@ class SimService(sim_pb2_grpc.SimulationServiceServicer):
     ) -> common_pb2.ActionResponse:  # noqa: N802
         """Reset the simulation to initial or specified state."""
         logger.info("Reset request received: %s", request)
+        self.step_controller.set_paused(True)
         try:
             if request.HasField("initial_state"):
                 qpos = list(request.initial_state.qpos)
                 logger.debug("Resetting with qpos: %s", qpos)
-                self.simulator.reset(position=None, orientation=qpos[3:7] if len(qpos) >= 7 else None)
+                self.simulator.reset(qpos=qpos)
             else:
                 logger.debug("Resetting to default state")
                 self.simulator.reset()
+            self.step_controller.set_paused(False)
             return common_pb2.ActionResponse(success=True)
         except Exception as e:
             logger.error("Reset failed: %s", e)
@@ -84,6 +86,7 @@ class SimService(sim_pb2_grpc.SimulationServiceServicer):
         """Set simulation parameters."""
         logger.info("SetParameters request received: %s", request)
         try:
+            self.step_controller.set_paused(True)
             params = request.parameters
             if params.HasField("time_scale"):
                 logger.debug("Setting time scale to %f", params.time_scale)
@@ -95,6 +98,7 @@ class SimService(sim_pb2_grpc.SimulationServiceServicer):
                 logger.debug("Setting initial state: %s", params.initial_state)
                 qpos = list(params.initial_state.qpos)
                 self.simulator.reset(position=None, orientation=qpos[3:7] if len(qpos) >= 7 else None)
+            self.step_controller.set_paused(False)
             return common_pb2.ActionResponse(success=True)
         except Exception as e:
             logger.error("SetParameters failed: %s", e)

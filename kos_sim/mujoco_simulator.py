@@ -3,16 +3,26 @@
 import argparse
 import asyncio
 import threading
+import yaml
 from pathlib import Path
 
 import colorlogging
 import mujoco
 import mujoco_viewer
 import numpy as np
+from dataclasses import dataclass
 from kscale import K
 from kscale.web.gen.api import RobotURDFMetadataOutput
 
 from kos_sim import logger
+
+
+@dataclass
+class SimulationConfig:
+    dt: float
+    kp: float
+    kd: float
+    sim_decimation: int
 
 
 class MujocoSimulator:
@@ -20,14 +30,21 @@ class MujocoSimulator:
         self,
         model_path: str | Path,
         model_metadata: RobotURDFMetadataOutput,
-        render: bool = False,
+        config_path: str | Path,
         gravity: bool = True,
+        render: bool = True,
         suspended: bool = False,
     ) -> None:
         # Load config or use default
         self._metadata = model_metadata
 
+        # config yml load as SimulationConfig
+        with open(config_path, "r") as f:
+            config_data = yaml.safe_load(f)
+        self._config = SimulationConfig(**config_data)
+
         # Load MuJoCo model and initialize data
+        print("Loading model from %s", model_path)
         self._model = mujoco.MjModel.from_xml_path(str(model_path))
         self._model.opt.timestep = self._config.dt  # Use dt from config
         self._data = mujoco.MjData(self._model)
@@ -152,34 +169,24 @@ class MujocoSimulator:
 
                 self._current_commands[joint_name] = command
 
-    def reset(self, position: dict[str, float] | None = None, orientation: list[float] | None = None) -> None:
+    def reset(
+        self,
+        qpos: list[float] | None = None,
+    ) -> None:
         """Reset simulation to specified or default state.
 
         Args:
-            position: Dict of joint names to positions (radians)
-            orientation: Quaternion [w, x, y, z] for base orientation
+            base_position: [x, y, z] position for the base
+            base_orientation: Quaternion [w, x, y, z] for base orientation
+            joint_positions: Dict of joint names to positions (radians)
         """
+        logger.info("Resetting simulation")
+        logger.info("qpos: %s", qpos)
         mujoco.mj_resetData(self._model, self._data)
 
-        # Set joint positions if provided, otherwise use defaults
-        if position is not None:
-            for joint_name, pos in position.items():
-                if joint_name in self._actuator_ids:
-                    self._data.qpos[self._actuator_ids[joint_name]] = pos
-        else:
-            try:
-                self._data.qpos = self._model.keyframe("default").qpos
-            except Exception:
-                self._data.qpos = np.zeros_like(self._data.qpos)
-
-        # Set orientation if provided
-        if orientation is not None:
-            # Find the free joint that controls base orientation
-            for i in range(self._model.njnt):
-                if self._model.jnt_type[i] == mujoco.mjtJoint.mjJNT_FREE:
-                    # Set quaternion part of the free joint
-                    self._data.qpos[i : i + 4] = orientation
-                    break
+        # reset qpos
+        if qpos is not None:
+            self._data.qpos = qpos
 
         # Reset velocities and accelerations
         self._data.qvel = np.zeros_like(self._data.qvel)
@@ -187,7 +194,6 @@ class MujocoSimulator:
 
         # Re-initialize state
         mujoco.mj_forward(self._model, self._data)
-        mujoco.mj_step(self._model, self._data)
 
     def close(self) -> None:
         """Clean up simulation resources."""
@@ -204,13 +210,13 @@ class MujocoSimulator:
 
 
 async def test_simulation_adhoc(
-    model_name: str, duration: float = 5.0, speed: float = 1.0, render: bool = True
+    model_name: str, config_path: str | Path, duration: float = 5.0, speed: float = 1.0, render: bool = True
 ) -> None:
     api = K()
     model_dir = await api.download_and_extract_urdf(model_name)
     model_path = next(model_dir.glob("*.mjcf"))
 
-    simulator = MujocoSimulator(model_path, render=render)
+    simulator = MujocoSimulator(model_path, config_path, render=render)
 
     timestep = simulator.timestep
     initial_update = last_update = asyncio.get_event_loop().time()
@@ -234,6 +240,7 @@ async def test_simulation_adhoc(
 async def main() -> None:
     parser = argparse.ArgumentParser(description="Test the MuJoCo simulation.")
     parser.add_argument("model_name", type=str, help="Name of the model to simulate")
+    parser.add_argument("--config_path", type=str, default="cfg/mujoco.yml", help="Path to the simulation config")
     parser.add_argument("--duration", type=float, default=5.0, help="Duration to run simulation (seconds)")
     parser.add_argument("--speed", type=float, default=1.0, help="Simulation speed multiplier")
     parser.add_argument("--no-render", action="store_true", help="Disable rendering")
@@ -243,6 +250,7 @@ async def main() -> None:
     args = parser.parse_args()
     await test_simulation_adhoc(
         args.model_name,
+        args.config_path,
         duration=args.duration,
         speed=args.speed,
         render=not args.no_render,
