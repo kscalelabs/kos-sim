@@ -3,6 +3,7 @@
 import argparse
 import asyncio
 import time
+import traceback
 from concurrent import futures
 from pathlib import Path
 
@@ -28,7 +29,7 @@ class SimulationServer:
         port: int = 50051,
         step_mode: StepMode = StepMode.CONTINUOUS,
     ) -> None:
-        self.simulator = MujocoSimulator(model_path, model_metadata, config_path, render=True)
+        self.simulator = MujocoSimulator(model_path, model_metadata, config_path)
         self.step_controller = StepController(self.simulator, mode=step_mode)
         self.port = port
         self._stop_event = asyncio.Event()
@@ -42,8 +43,8 @@ class SimulationServer:
         assert self._server is not None
 
         # Add our services (these need to be modified to be async as well)
-        actuator_service = ActuatorService(self.simulator)
-        imu_service = IMUService(self.simulator)
+        actuator_service = ActuatorService(self.simulator, self.step_controller)
+        imu_service = IMUService(self.simulator, self.step_controller)
         sim_service = SimService(self.simulator, self.step_controller)
 
         actuator_pb2_grpc.add_ActuatorServiceServicer_to_server(actuator_service, self._server)
@@ -70,8 +71,6 @@ class SimulationServer:
                     while sim_time > 0:
                         self.simulator.step()
                         sim_time -= self.simulator.timestep
-                else:
-                    logger.info("Simulation is paused")
 
                 self.simulator.render()
                 # Add a small sleep to prevent the loop from consuming too much CPU
@@ -79,6 +78,7 @@ class SimulationServer:
 
         except Exception as e:
             logger.error("Simulation loop failed: %s", e)
+            logger.error("Traceback: %s", traceback.format_exc())
 
         finally:
             await self.stop()

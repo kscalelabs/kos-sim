@@ -1,4 +1,0 @@
-dt: 0.005  # Simulation timestep in seconds (1/200Hz)
-kp: 100.0  # Proportional gain for PD control
-kd: 10.0   # Derivative gain for PD control
-sim_decimation: 4  # Number of simulation steps per control update (200Hz/4 = 50Hz control)

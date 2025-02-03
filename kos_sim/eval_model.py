@@ -161,7 +161,12 @@ async def run_robot(
     
     # Initialize robot state handler
     robot_state = RobotState(JOINT_NAME_LIST, JOINT_SIGNS)
-    
+
+    sim = kos.sim
+    initial_state = {"qpos": [0.0, 0.0, 1.16620985, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]}
+    print()
+    await sim.reset(initial_state=initial_state)
+    await sim.set_paused(True)
     # Open CSV files for logging
     with open('inputs.csv', 'w', newline='') as inputs_file, \
          open('outputs.csv', 'w', newline='') as outputs_file:
@@ -184,61 +189,20 @@ async def run_robot(
         ])
 
         # Configure motors
-        print("Configuring motors...")
+        # print("Configuring motors...")
         leg_ids = [JOINT_NAME_TO_ID[name] for name in JOINT_NAME_LIST]
-        
-        # First disable torque
         for joint_id in leg_ids:
-            await kos.actuator.configure_actuator(actuator_id=joint_id, torque_enabled=False, zero_position=False)
-        await asyncio.sleep(1)
-
+            await kos.actuator.configure_actuator(actuator_id=joint_id, torque_enabled=True)
+        
         # Freeze upper arms in place
-        for arm_id in upper_arm_ids:
-            await kos.actuator.configure_actuator(actuator_id=arm_id, torque_enabled=False, zero_position=True)
-
-        await asyncio.sleep(1)
-
         arm_commands = []
         for arm_id in upper_arm_ids:
             arm_commands.append({"actuator_id": arm_id, "position": 0.0})
         await kos.actuator.command_actuators(arm_commands)
 
-        # enable upper arms
-        for arm_id in upper_arm_ids:
-            await kos.actuator.configure_actuator(actuator_id=arm_id, kp=150, kd=10, max_torque=100, torque_enabled=True)
-
         # Capture current position as zero
-        print("Capturing current position as zero...")
+        # print("Capturing current position as zero...")
         await robot_state.offset_in_place(kos, JOINT_NAME_LIST)
-
-        # Get arm positions and hold them
-        # arm_states = await kos.actuator.get_actuators_state(ARM_IDS)
-        # arm_positions = {arm_states.states[i].position for i in range(len(ARM_IDS))}
-
-        # arm_commands = []
-        # for i, arm_id in enumerate(ARM_IDS):
-        #     arm_commands.append({"actuator_id": arm_id, "position": arm_positions[i]})
-        # await kos.actuator.command_actuators(arm_commands)
-
-        # # Configure arms
-        # for arm_id in ARM_IDS:
-        #     await kos.actuator.configure_actuator(actuator_id=arm_id, kp=20, kd=1, torque_enabled=True)
-
-        tau_limit = np.array(list(model_info["robot_effort"]) + list(model_info["robot_effort"])) * model_info["tau_factor"]
-        kps = np.array(list(model_info["robot_stiffness"]) + list(model_info["robot_stiffness"]))
-        kds = np.array(list(model_info["robot_damping"]) + list(model_info["robot_damping"]))
-
-        # Configure gains for each joint
-        for i, joint_name in enumerate(JOINT_NAME_LIST):
-            joint_id = JOINT_NAME_TO_ID[joint_name]
-            print(f"Configuring joint {joint_name} with ID {joint_id} for kp={kps[i]}, kd={kds[i]}, max_torque={tau_limit[i]}")
-            await kos.actuator.configure_actuator(
-                actuator_id=joint_id,
-                kp=float(kps[i]),
-                kd=float(kds[i]),
-                max_torque=float(tau_limit[i]),
-                torque_enabled=True
-            )
 
         # Initialize policy state
         default = np.array(model_info["default_standing"])
@@ -250,11 +214,15 @@ async def run_robot(
         print(f"Going to zero position...")
         await kos.actuator.command_actuators([{"actuator_id": joint_id, "position": 0.0} for joint_id in leg_ids])
 
-        for i in range(5, -1, -1):
+        # await kos.actuator.command_actuators([{"actuator_id": 11, "position": 0.0}])
+        # return
+
+        for i in range(3, -1, -1):
             print(f"Starting in {i} seconds...")
             await asyncio.sleep(1)
 
         try:
+            await sim.set_paused(False)
             while True:
                 process_start = time.time()
                 if keyboard_use:
@@ -351,6 +319,7 @@ async def main():
             
         # Get model info from policy metadata
         metadata = policy.get_metadata()
+        print(metadata)
         model_info = {
             "num_actions": metadata["num_actions"],
             "num_observations": metadata["num_observations"],

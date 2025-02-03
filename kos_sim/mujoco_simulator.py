@@ -5,7 +5,7 @@ import asyncio
 import threading
 import yaml
 from pathlib import Path
-
+import time
 import colorlogging
 import mujoco
 import mujoco_viewer
@@ -20,9 +20,11 @@ from kos_sim import logger
 @dataclass
 class SimulationConfig:
     dt: float
-    kp: float
-    kd: float
     sim_decimation: int
+    joint_id_to_name: dict[int, str]
+    gravity: bool = True
+    render: bool = True
+    suspended: bool = False
 
 
 class MujocoSimulator:
@@ -31,9 +33,6 @@ class MujocoSimulator:
         model_path: str | Path,
         model_metadata: RobotURDFMetadataOutput,
         config_path: str | Path,
-        gravity: bool = True,
-        render: bool = True,
-        suspended: bool = False,
     ) -> None:
         # Load config or use default
         self._metadata = model_metadata
@@ -44,13 +43,13 @@ class MujocoSimulator:
         self._config = SimulationConfig(**config_data)
 
         # Load MuJoCo model and initialize data
-        print("Loading model from %s", model_path)
+        logger.info("Loading model from %s", model_path)
         self._model = mujoco.MjModel.from_xml_path(str(model_path))
         self._model.opt.timestep = self._config.dt  # Use dt from config
         self._data = mujoco.MjData(self._model)
 
-        self._gravity = gravity
-        self._suspended = suspended
+        self._gravity = self._config.gravity
+        self._suspended = self._config.suspended
         self._initial_pos = None
         self._initial_quat = None
 
@@ -75,26 +74,33 @@ class MujocoSimulator:
         mujoco.mj_forward(self._model, self._data)
 
         # Setup viewer after initial step
-        self._render_enabled = render
-        if render:
+        self._render_enabled = self._config.render
+        if self._render_enabled:
             self._viewer = mujoco_viewer.MujocoViewer(self._model, self._data)
         else:
             self._viewer = mujoco_viewer.MujocoViewer(self._model, self._data, "offscreen")
 
         # Cache lookups after initialization
-        self._sensor_ids = {self._model.sensor(i).name: i for i in range(self._model.nsensor)}
-        self._actuator_ids = {self._model.actuator(i).name: i for i in range(self._model.nu)}
+        self._sensor_name_to_id = {self._model.sensor(i).name: i for i in range(self._model.nsensor)}
+        print("SENSOR_IDS", self._sensor_name_to_id)
+        self._actuator_name_to_id = {self._model.actuator(i).name: i for i in range(self._model.nu)}
+        print("ACTUATOR_IDS", self._actuator_name_to_id)
+
+        # There is an important distinction between actuator IDs and joint IDs.
+        # joint IDs should be at the kos layer, where the canonical IDs are assigned (see docs.kscale.dev)
+        # but actuator IDs are at the mujoco layer, where the actuators actually get mapped.
+        print("JOINT_ID_TO_NAME", self._config.joint_id_to_name)
+        self._joint_id_to_actuator_id = {joint_id: self._actuator_name_to_id[name] for joint_id, name in self._config.joint_id_to_name.items()}
 
         # Add control parameters
         self._lock = threading.Lock()
         self._current_commands: dict[str, float] = {}
-
-        # Use config for control parameters
-        self._kp = np.array([self._config.kp] * self._model.nu)
-        self._kd = np.array([self._config.kd] * self._model.nu)
+        self._actuator_states: dict[int, dict[str, float]] = {}
 
         self._count_lowlevel = 0
         self._target_positions: dict[str, float] = {}  # Store target positions between updates
+
+        self.pd_counter = 0
 
     def step(self) -> None:
         """Execute one step of the simulation."""
@@ -103,15 +109,10 @@ class MujocoSimulator:
             if self._count_lowlevel % self._config.sim_decimation == 0:
                 self._target_positions = self._current_commands.copy()
 
-            # Apply actuator commands using PD control
+            # Apply position control commands directly to actuators
             for name, target_pos in self._target_positions.items():
-                actuator_id = self._actuator_ids[name]
-                current_pos = self._data.qpos[actuator_id]
-                current_vel = self._data.qvel[actuator_id]
-
-                # PD control law
-                tau = self._kp[actuator_id] * (target_pos - current_pos) - self._kd[actuator_id] * current_vel
-                self._data.ctrl[actuator_id] = tau
+                actuator_id = self._actuator_name_to_id[name]
+                self._data.ctrl[actuator_id] = target_pos
 
         # Step physics
         mujoco.mj_step(self._model, self._data)
@@ -123,7 +124,6 @@ class MujocoSimulator:
             # Find the root joint (floating_base)
             for i in range(self._model.njnt):
                 if self._model.jnt_type[i] == mujoco.mjtJoint.mjJNT_FREE:
-                    print(f"Joint name: {self._model.joint(i).name}")
                     self._data.qpos[i : i + 7] = self._model.keyframe("default").qpos[i : i + 7]
                     self._data.qvel[i : i + 6] = 0
                     break
@@ -136,21 +136,23 @@ class MujocoSimulator:
 
     def get_sensor_data(self, name: str) -> np.ndarray:
         """Get data from a named sensor."""
-        if name not in self._sensor_ids:
-            raise KeyError(f"Sensor '{name}' not found")
-        sensor_id = self._sensor_ids[name]
+        with self._lock:
+            if name not in self._sensor_name_to_id:
+                raise KeyError(f"Sensor '{name}' not found")
+            sensor_id = self._sensor_name_to_id[name]
         return self._data.sensor(sensor_id).data.copy()
 
     def get_actuator_state(self, joint_id: int) -> float:
         """Get current state of an actuator using real joint ID."""
-        if joint_id not in self._config.joint_id_to_name:
-            raise KeyError(f"Joint ID {joint_id} not found in config mappings")
+        with self._lock:
+            if joint_id not in self._config.joint_id_to_name:
+                raise KeyError(f"Joint ID {joint_id} not found in config mappings")
 
-        joint_name = self._config.joint_id_to_name[joint_id]
-        if joint_name not in self._actuator_ids:
-            raise KeyError(f"Joint {joint_name} not found in MuJoCo model")
+            joint_name = self._config.joint_id_to_name[joint_id]
+            if joint_name not in self._actuator_name_to_id:
+                raise KeyError(f"Joint {joint_name} not found in MuJoCo model")
 
-        actuator_id = self._actuator_ids[joint_name]
+            actuator_id = self._actuator_name_to_id[joint_name]
         return float(self._data.qpos[actuator_id])
 
     def command_actuators(self, commands: dict[int, float]) -> None:
@@ -163,11 +165,32 @@ class MujocoSimulator:
                     continue
 
                 joint_name = self._config.joint_id_to_name[joint_id]
-                if joint_name not in self._actuator_ids:
+                if joint_name not in self._actuator_name_to_id:
                     logger.warning("Joint %s not found in MuJoCo model", joint_name)
                     continue
 
                 self._current_commands[joint_name] = command
+
+    def configure_actuator(self, joint_id: int, configuration: dict[str, float]) -> None:
+        actuator_id = self._joint_id_to_actuator_id[joint_id]
+        self._actuator_states[actuator_id] = configuration
+
+        if "kp" in configuration:
+            self._model.actuator_gainprm[actuator_id, 0] = configuration["kp"]
+            logger.info("Set kp for actuator %s to %f", joint_id, configuration["kp"])
+        if "kd" in configuration:
+            self._model.actuator_biasprm[actuator_id, 2] = configuration["kd"]
+            logger.info("Set kd for actuator %s to %f", joint_id, configuration["kd"])
+        
+        torque_enabled = configuration.get("torque_enabled", False)
+        if not torque_enabled:
+            self._model.actuator_forcerange[actuator_id, 0] = 0
+            self._model.actuator_forcerange[actuator_id, 1] = 0
+            logger.info("Set torque_enabled for actuator %s to %s", joint_id, torque_enabled)
+        elif "max_torque" in configuration:
+            self._model.actuator_forcerange[actuator_id, 0] = -configuration["max_torque"]
+            self._model.actuator_forcerange[actuator_id, 1] = configuration["max_torque"]
+            logger.info("Set max_torque for actuator %s to +/-%f", joint_id, configuration["max_torque"])
 
     def reset(
         self,
@@ -216,7 +239,7 @@ async def test_simulation_adhoc(
     model_dir = await api.download_and_extract_urdf(model_name)
     model_path = next(model_dir.glob("*.mjcf"))
 
-    simulator = MujocoSimulator(model_path, config_path, render=render)
+    simulator = MujocoSimulator(model_path, config_path)
 
     timestep = simulator.timestep
     initial_update = last_update = asyncio.get_event_loop().time()
