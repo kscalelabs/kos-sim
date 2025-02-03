@@ -214,9 +214,6 @@ async def run_robot(
         print(f"Going to zero position...")
         await kos.actuator.command_actuators([{"actuator_id": joint_id, "position": 0.0} for joint_id in leg_ids])
 
-        # await kos.actuator.command_actuators([{"actuator_id": 11, "position": 0.0}])
-        # return
-
         for i in range(3, -1, -1):
             print(f"Starting in {i} seconds...")
             await asyncio.sleep(1)
