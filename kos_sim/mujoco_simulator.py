@@ -173,7 +173,9 @@ class MujocoSimulator:
 
     def configure_actuator(self, joint_id: int, configuration: dict[str, float]) -> None:
         actuator_id = self._joint_id_to_actuator_id[joint_id]
-        self._actuator_states[actuator_id] = configuration
+        if actuator_id not in self._actuator_states:
+            self._actuator_states[actuator_id] = {}
+        self._actuator_states[actuator_id].update(configuration)
 
         if "kp" in configuration:
             self._model.actuator_gainprm[actuator_id, 0] = configuration["kp"]
@@ -184,10 +186,19 @@ class MujocoSimulator:
         
         torque_enabled = configuration.get("torque_enabled", False)
         if not torque_enabled:
+            self._actuator_states[actuator_id]["saved_min_tau"] = self._model.actuator_forcerange[actuator_id, 0]
+            self._actuator_states[actuator_id]["saved_max_tau"] = self._model.actuator_forcerange[actuator_id, 1]
             self._model.actuator_forcerange[actuator_id, 0] = 0
             self._model.actuator_forcerange[actuator_id, 1] = 0
             logger.info("Set torque_enabled for actuator %s to %s", joint_id, torque_enabled)
-        elif "max_torque" in configuration:
+        else:
+            # if previously disabled torque, restore previous values
+            if "saved_min_tau" in self._actuator_states[actuator_id]:
+                self._model.actuator_forcerange[actuator_id, 0] = self._actuator_states[actuator_id]["saved_min_tau"]
+                self._model.actuator_forcerange[actuator_id, 1] = self._actuator_states[actuator_id]["saved_max_tau"]
+                logger.info("Set torque_enabled for actuator %s to %s", joint_id, torque_enabled)
+
+        if "max_torque" in configuration and torque_enabled:
             self._model.actuator_forcerange[actuator_id, 0] = -configuration["max_torque"]
             self._model.actuator_forcerange[actuator_id, 1] = configuration["max_torque"]
             logger.info("Set max_torque for actuator %s to +/-%f", joint_id, configuration["max_torque"])

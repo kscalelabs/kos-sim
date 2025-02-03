@@ -210,7 +210,7 @@ class IMUService(imu_pb2_grpc.IMUServiceServicer):
     ) -> imu_pb2.QuaternionResponse:
         """Implements GetQuaternion by reading orientation data from simulator."""
         try:
-            quat_data = self.simulator.get_sensor_data("orientation")
+            quat_data = self.simulator.get_sensor_data("base_link_quat")
             return imu_pb2.QuaternionResponse(
                 w=float(quat_data[0]), x=float(quat_data[1]), y=float(quat_data[2]), z=float(quat_data[3])
             )
@@ -224,7 +224,7 @@ class IMUService(imu_pb2_grpc.IMUServiceServicer):
     ) -> imu_pb2.EulerAnglesResponse:
         """Implements GetEuler by converting orientation quaternion to Euler angles."""
         try:
-            quat_data = self.simulator.get_sensor_data("orientation")
+            quat_data = self.simulator.get_sensor_data("base_link_quat")
             # Extract quaternion components
             w, x, y, z = [float(q) for q in quat_data]
             
