@@ -14,8 +14,8 @@ from kscale import K
 from kscale.web.gen.api import RobotURDFMetadataOutput
 
 from kos_sim import logger
-from kos_sim.services import ActuatorService, IMUService, SimService
 from kos_sim.mujoco_simulator import MujocoSimulator
+from kos_sim.services import ActuatorService, IMUService, SimService
 from kos_sim.stepping import StepController, StepMode
 from kos_sim.utils import get_sim_artifacts_path
 
