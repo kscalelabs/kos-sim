@@ -1,6 +1,8 @@
 # requirements.txt
 
-pykos
+colorlogging
+kscale
 mujoco
-mujoco-python-viewer
 numpy
+omegaconf
+pykos

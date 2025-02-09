@@ -3,28 +3,29 @@
 import argparse
 import asyncio
 import threading
-import yaml
+from dataclasses import dataclass, field
 from pathlib import Path
-import time
+from typing import cast
+
 import colorlogging
 import mujoco
 import mujoco_viewer
 import numpy as np
-from dataclasses import dataclass
 from kscale import K
 from kscale.web.gen.api import RobotURDFMetadataOutput
+from omegaconf import OmegaConf
 
 from kos_sim import logger
 
 
 @dataclass
 class SimulationConfig:
-    dt: float
-    sim_decimation: int
-    joint_id_to_name: dict[int, str]
-    gravity: bool = True
-    render: bool = True
-    suspended: bool = False
+    dt: float = field(default=0.001)
+    sim_decimation: int = field(default=1)
+    joint_id_to_name: dict[int, str] = field(default_factory=dict)
+    gravity: bool = field(default=True)
+    render: bool = field(default=True)
+    suspended: bool = field(default=False)
 
 
 class MujocoSimulator:
@@ -32,15 +33,15 @@ class MujocoSimulator:
         self,
         model_path: str | Path,
         model_metadata: RobotURDFMetadataOutput,
-        config_path: str | Path,
+        config_path: str | Path | None = None,
     ) -> None:
         # Load config or use default
         self._metadata = model_metadata
 
-        # config yml load as SimulationConfig
-        with open(config_path, "r") as f:
-            config_data = yaml.safe_load(f)
-        self._config = SimulationConfig(**config_data)
+        config = cast(SimulationConfig, OmegaConf.structured(SimulationConfig))
+        if config_path is not None:
+            config = OmegaConf.merge(config, OmegaConf.load(config_path))
+        self._config = config
 
         # Load MuJoCo model and initialize data
         logger.info("Loading model from %s", model_path)
@@ -90,7 +91,9 @@ class MujocoSimulator:
         # joint IDs should be at the kos layer, where the canonical IDs are assigned (see docs.kscale.dev)
         # but actuator IDs are at the mujoco layer, where the actuators actually get mapped.
         print("JOINT_ID_TO_NAME", self._config.joint_id_to_name)
-        self._joint_id_to_actuator_id = {joint_id: self._actuator_name_to_id[name] for joint_id, name in self._config.joint_id_to_name.items()}
+        self._joint_id_to_actuator_id = {
+            joint_id: self._actuator_name_to_id[name] for joint_id, name in self._config.joint_id_to_name.items()
+        }
 
         # Add control parameters
         self._lock = threading.Lock()
@@ -183,7 +186,7 @@ class MujocoSimulator:
         if "kd" in configuration:
             self._model.actuator_biasprm[actuator_id, 2] = configuration["kd"]
             logger.info("Set kd for actuator %s to %f", joint_id, configuration["kd"])
-        
+
         torque_enabled = configuration.get("torque_enabled", False)
         if not torque_enabled:
             self._actuator_states[actuator_id]["saved_min_tau"] = self._model.actuator_forcerange[actuator_id, 0]
@@ -244,13 +247,18 @@ class MujocoSimulator:
 
 
 async def test_simulation_adhoc(
-    model_name: str, config_path: str | Path, duration: float = 5.0, speed: float = 1.0, render: bool = True
+    model_name: str,
+    config_path: str | Path,
+    duration: float = 5.0,
+    speed: float = 1.0,
+    render: bool = True,
 ) -> None:
     api = K()
     model_dir = await api.download_and_extract_urdf(model_name)
     model_path = next(model_dir.glob("*.mjcf"))
 
-    simulator = MujocoSimulator(model_path, config_path)
+    model_metadata = None  # TODO
+    simulator = MujocoSimulator(model_path, model_metadata, config_path)
 
     timestep = simulator.timestep
     initial_update = last_update = asyncio.get_event_loop().time()
@@ -293,4 +301,5 @@ async def main() -> None:
 
 if __name__ == "__main__":
     # python -m kos_sim.simulator
+    asyncio.run(main())
     asyncio.run(main())

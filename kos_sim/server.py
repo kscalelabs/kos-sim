@@ -25,7 +25,7 @@ class SimulationServer:
         self,
         model_path: str | Path,
         model_metadata: RobotURDFMetadataOutput,
-        config_path: str | Path,
+        config_path: str | Path | None = None,
         port: int = 50051,
         step_mode: StepMode = StepMode.CONTINUOUS,
     ) -> None:
@@ -104,6 +104,7 @@ class SimulationServer:
 
 async def get_model_metadata(api: K, model_name: str) -> RobotURDFMetadataOutput:
     model_path = get_sim_artifacts_path() / model_name / "metadata.json"
+    breakpoint()
     if model_path.exists():
         return RobotURDFMetadataOutput.model_validate_json(model_path.read_text())
     model_path.parent.mkdir(parents=True, exist_ok=True)
@@ -112,18 +113,25 @@ async def get_model_metadata(api: K, model_name: str) -> RobotURDFMetadataOutput
     return model_metadata
 
 
-async def serve(model_name: str, config_path: str | None = None, port: int = 50051) -> None:
-    api = K()
-    model_dir, model_metadata = await asyncio.gather(
-        api.download_and_extract_urdf(model_name),
-        get_model_metadata(api, model_name),
-    )
-
-    # breakpoint()
+async def serve(
+    model_name: str,
+    config_path: str | None = None,
+    port: int = 50051,
+) -> None:
+    async with K() as api:
+        model_dir, model_metadata = await asyncio.gather(
+            api.download_and_extract_urdf(model_name),
+            get_model_metadata(api, model_name),
+        )
 
     model_path = next(model_dir.glob("*.mjcf"))
 
-    server = SimulationServer(model_path, model_metadata=model_metadata, config_path=config_path, port=port)
+    server = SimulationServer(
+        model_path,
+        model_metadata=model_metadata,
+        config_path=config_path,
+        port=port,
+    )
     await server.start()
 
 
