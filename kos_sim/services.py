@@ -4,7 +4,15 @@ import math
 
 import grpc
 from google.protobuf import empty_pb2
-from kos_protos import actuator_pb2, actuator_pb2_grpc, common_pb2, imu_pb2, imu_pb2_grpc, sim_pb2, sim_pb2_grpc
+from kos_protos import (
+    actuator_pb2,
+    actuator_pb2_grpc,
+    common_pb2,
+    imu_pb2,
+    imu_pb2_grpc,
+    sim_pb2,
+    sim_pb2_grpc,
+)
 
 from kos_sim import logger
 from kos_sim.mujoco_simulator import MujocoSimulator
@@ -18,9 +26,11 @@ class SimService(sim_pb2_grpc.SimulationServiceServicer):
         self.simulator = simulator
         self.step_controller = step_controller
 
-    def Reset(  # noqa: N802
-        self, request: sim_pb2.ResetRequest, context: grpc.ServicerContext
-    ) -> common_pb2.ActionResponse:  # noqa: N802
+    async def Reset(  # noqa: N802
+        self,
+        request: sim_pb2.ResetRequest,
+        context: grpc.ServicerContext,
+    ) -> common_pb2.ActionResponse:
         """Reset the simulation to initial or specified state."""
         logger.info("Reset request received: %s", request)
         self.step_controller.set_paused(True)
@@ -41,7 +51,9 @@ class SimService(sim_pb2_grpc.SimulationServiceServicer):
             return common_pb2.ActionResponse(success=False, error=str(e))
 
     def SetPaused(  # noqa: N802
-        self, request: sim_pb2.SetPausedRequest, context: grpc.ServicerContext
+        self,
+        request: sim_pb2.SetPausedRequest,
+        context: grpc.ServicerContext,
     ) -> common_pb2.ActionResponse:  # noqa: N802
         """Pause or unpause the simulation."""
         logger.info("SetPaused request received: paused=%s", request.paused)
@@ -54,9 +66,11 @@ class SimService(sim_pb2_grpc.SimulationServiceServicer):
             context.set_details(str(e))
             return common_pb2.ActionResponse(success=False, error=str(e))
 
-    def Step(  # noqa: N802
-        self, request: sim_pb2.StepRequest, context: grpc.ServicerContext
-    ) -> common_pb2.ActionResponse:  # noqa: N802
+    async def Step(  # noqa: N802
+        self,
+        request: sim_pb2.StepRequest,
+        context: grpc.ServicerContext,
+    ) -> common_pb2.ActionResponse:
         """Step the simulation forward."""
         logger.info(
             "Step request received: num_steps=%d, step_size=%s",
@@ -81,7 +95,9 @@ class SimService(sim_pb2_grpc.SimulationServiceServicer):
             return common_pb2.ActionResponse(success=False, error=str(e))
 
     def SetParameters(  # noqa: N802
-        self, request: sim_pb2.SetParametersRequest, context: grpc.ServicerContext
+        self,
+        request: sim_pb2.SetParametersRequest,
+        context: grpc.ServicerContext,
     ) -> common_pb2.ActionResponse:
         """Set simulation parameters."""
         logger.info("SetParameters request received: %s", request)
@@ -107,7 +123,9 @@ class SimService(sim_pb2_grpc.SimulationServiceServicer):
             return common_pb2.ActionResponse(success=False, error=str(e))
 
     def GetParameters(  # noqa: N802
-        self, request: empty_pb2.Empty, context: grpc.ServicerContext
+        self,
+        request: empty_pb2.Empty,
+        context: grpc.ServicerContext,
     ) -> sim_pb2.GetParametersResponse:
         """Get current simulation parameters."""
         logger.info("GetParameters request received")
@@ -124,6 +142,7 @@ class SimService(sim_pb2_grpc.SimulationServiceServicer):
             context.set_details(str(e))
             return sim_pb2.GetParametersResponse(error=common_pb2.Error(message=str(e)))
 
+
 class ActuatorService(actuator_pb2_grpc.ActuatorServiceServicer):
     """Implementation of ActuatorService that wraps a MuJoCo simulation."""
 
@@ -132,7 +151,9 @@ class ActuatorService(actuator_pb2_grpc.ActuatorServiceServicer):
         self.step_controller = step_controller
 
     def CommandActuators(  # noqa: N802
-        self, request: actuator_pb2.CommandActuatorsRequest, context: grpc.ServicerContext
+        self,
+        request: actuator_pb2.CommandActuatorsRequest,
+        context: grpc.ServicerContext,
     ) -> actuator_pb2.CommandActuatorsResponse:
         """Implements CommandActuators by forwarding to simulator."""
         try:
@@ -145,7 +166,9 @@ class ActuatorService(actuator_pb2_grpc.ActuatorServiceServicer):
             return actuator_pb2.CommandActuatorsResponse()
 
     def GetActuatorsState(  # noqa: N802
-        self, request: empty_pb2.Empty, context: grpc.ServicerContext
+        self,
+        request: empty_pb2.Empty,
+        context: grpc.ServicerContext,
     ) -> actuator_pb2.GetActuatorsStateResponse:
         """Implements GetActuatorsState by reading from simulator."""
         try:
@@ -165,8 +188,12 @@ class ActuatorService(actuator_pb2_grpc.ActuatorServiceServicer):
             context.set_code(grpc.StatusCode.INTERNAL)
             context.set_details(str(e))
             return actuator_pb2.GetActuatorsStateResponse()
-        
-    def ConfigureActuator(self, request: actuator_pb2.ConfigureActuatorRequest, context: grpc.ServicerContext) -> common_pb2.ActionResponse:
+
+    def ConfigureActuator(
+        self,
+        request: actuator_pb2.ConfigureActuatorRequest,
+        context: grpc.ServicerContext,
+    ) -> common_pb2.ActionResponse:
         configuration = {}
         if request.HasField("torque_enabled"):
             configuration["torque_enabled"] = request.torque_enabled
@@ -191,7 +218,9 @@ class IMUService(imu_pb2_grpc.IMUServiceServicer):
         self.step_controller = step_controller
 
     def GetValues(  # noqa: N802
-        self, request: empty_pb2.Empty, context: grpc.ServicerContext
+        self,
+        request: empty_pb2.Empty,
+        context: grpc.ServicerContext,
     ) -> imu_pb2.IMUValuesResponse:
         """Implements GetValues by reading IMU sensor data from simulator."""
         try:
@@ -206,7 +235,9 @@ class IMUService(imu_pb2_grpc.IMUServiceServicer):
             return imu_pb2.IMUValuesResponse()
 
     def GetQuaternion(  # noqa: N802
-        self, request: empty_pb2.Empty, context: grpc.ServicerContext
+        self,
+        request: empty_pb2.Empty,
+        context: grpc.ServicerContext,
     ) -> imu_pb2.QuaternionResponse:
         """Implements GetQuaternion by reading orientation data from simulator."""
         try:
@@ -220,39 +251,37 @@ class IMUService(imu_pb2_grpc.IMUServiceServicer):
             return imu_pb2.QuaternionResponse()
 
     def GetEuler(  # noqa: N802
-        self, request: empty_pb2.Empty, context: grpc.ServicerContext
+        self,
+        request: empty_pb2.Empty,
+        context: grpc.ServicerContext,
     ) -> imu_pb2.EulerAnglesResponse:
         """Implements GetEuler by converting orientation quaternion to Euler angles."""
         try:
             quat_data = self.simulator.get_sensor_data("base_link_quat")
             # Extract quaternion components
             w, x, y, z = [float(q) for q in quat_data]
-            
+
             # Convert quaternion to Euler angles (roll, pitch, yaw)
             # Roll (x-axis rotation)
             sinr_cosp = 2 * (w * x + y * z)
             cosr_cosp = 1 - 2 * (x * x + y * y)
             roll = math.atan2(sinr_cosp, cosr_cosp)
-            
+
             # Pitch (y-axis rotation)
             sinp = 2 * (w * y - z * x)
             pitch = math.asin(sinp) if abs(sinp) < 1 else math.copysign(math.pi / 2, sinp)
-            
+
             # Yaw (z-axis rotation)
             siny_cosp = 2 * (w * z + x * y)
             cosy_cosp = 1 - 2 * (y * y + z * z)
             yaw = math.atan2(siny_cosp, cosy_cosp)
-            
+
             # Convert to degrees
             roll_deg = math.degrees(roll)
             pitch_deg = math.degrees(pitch)
             yaw_deg = math.degrees(yaw)
-            
-            return imu_pb2.EulerAnglesResponse(
-                roll=roll_deg,
-                pitch=pitch_deg,
-                yaw=yaw_deg
-            )
+
+            return imu_pb2.EulerAnglesResponse(roll=roll_deg, pitch=pitch_deg, yaw=yaw_deg)
         except Exception as e:
             context.set_code(grpc.StatusCode.INTERNAL)
             context.set_details(str(e))

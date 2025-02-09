@@ -105,7 +105,7 @@ class MujocoSimulator:
 
         self.pd_counter = 0
 
-    def step(self) -> None:
+    async def step(self) -> None:
         """Execute one step of the simulation."""
         with self._lock:
             # Only update commands every sim_decimation steps
@@ -117,8 +117,8 @@ class MujocoSimulator:
                 actuator_id = self._actuator_name_to_id[name]
                 self._data.ctrl[actuator_id] = target_pos
 
-        # Step physics
-        mujoco.mj_step(self._model, self._data)
+        # Step physics - allow other coroutines to run during computation
+        await asyncio.get_event_loop().run_in_executor(None, mujoco.mj_step, self._model, self._data)
 
         # Increment counter
         self._count_lowlevel += 1
@@ -133,9 +133,10 @@ class MujocoSimulator:
 
         return self._data
 
-    def render(self) -> None:
+    async def render(self) -> None:
+        """Render the simulation asynchronously."""
         if self._render_enabled:
-            self._viewer.render()
+            await asyncio.get_event_loop().run_in_executor(None, self._viewer.render)
 
     def get_sensor_data(self, name: str) -> np.ndarray:
         """Get data from a named sensor."""
@@ -206,31 +207,25 @@ class MujocoSimulator:
             self._model.actuator_forcerange[actuator_id, 1] = configuration["max_torque"]
             logger.info("Set max_torque for actuator %s to +/-%f", joint_id, configuration["max_torque"])
 
-    def reset(
+    async def reset(
         self,
         qpos: list[float] | None = None,
     ) -> None:
-        """Reset simulation to specified or default state.
-
-        Args:
-            base_position: [x, y, z] position for the base
-            base_orientation: Quaternion [w, x, y, z] for base orientation
-            joint_positions: Dict of joint names to positions (radians)
-        """
+        """Reset simulation to specified or default state."""
         logger.info("Resetting simulation")
         logger.info("qpos: %s", qpos)
-        mujoco.mj_resetData(self._model, self._data)
 
-        # reset qpos
-        if qpos is not None:
-            self._data.qpos = qpos
-
-        # Reset velocities and accelerations
-        self._data.qvel = np.zeros_like(self._data.qvel)
-        self._data.qacc = np.zeros_like(self._data.qacc)
-
-        # Re-initialize state
-        mujoco.mj_forward(self._model, self._data)
+        # Run reset operations in executor to avoid blocking
+        await asyncio.get_event_loop().run_in_executor(
+            None,
+            lambda: [
+                mujoco.mj_resetData(self._model, self._data),
+                setattr(self._data, 'qpos', qpos) if qpos is not None else None,
+                setattr(self._data, 'qvel', np.zeros_like(self._data.qvel)),
+                setattr(self._data, 'qacc', np.zeros_like(self._data.qacc)),
+                mujoco.mj_forward(self._model, self._data)
+            ]
+        )
 
     def close(self) -> None:
         """Clean up simulation resources."""
