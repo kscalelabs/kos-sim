@@ -3,6 +3,7 @@
 import asyncio
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import NotRequired, TypedDict, TypeVar
 
 import mujoco
 import mujoco_viewer
@@ -10,6 +11,22 @@ import numpy as np
 from kscale.web.gen.api import RobotURDFMetadataOutput
 
 from kos_sim import logger
+
+T = TypeVar("T")
+
+
+def _nn(value: T | None) -> T:
+    if value is None:
+        raise ValueError("Value is not set")
+    return value
+
+
+class ConfigureActuatorRequest(TypedDict):
+    torque_enabled: NotRequired[bool]
+    zero_position: NotRequired[float]
+    kp: NotRequired[float]
+    kd: NotRequired[float]
+    max_torque: NotRequired[float]
 
 
 @dataclass
@@ -40,13 +57,15 @@ class MujocoSimulator:
         self._suspended = suspended
 
         # Gets the sim decimation.
-        self._control_frequency = float(self._metadata.control_frequency)
+        if (control_frequency := self._metadata.control_frequency) is None:
+            raise ValueError("Control frequency is not set")
+        self._control_frequency = float(control_frequency)
         self._sim_decimation = int(1 / self._control_frequency / self._dt)
 
         # Gets the joint name mapping.
         if self._metadata.joint_name_to_metadata is None:
             raise ValueError("Joint name to metadata is not set")
-        self._joint_name_to_id = {name: joint.id for name, joint in self._metadata.joint_name_to_metadata.items()}
+        self._joint_name_to_id = {name: _nn(joint.id) for name, joint in self._metadata.joint_name_to_metadata.items()}
         self._joint_id_to_name = {v: k for k, v in self._joint_name_to_id.items()}
         if len(self._joint_name_to_id) != len(self._joint_id_to_name):
             raise ValueError("Joint IDs are not unique!")
@@ -107,7 +126,6 @@ class MujocoSimulator:
         # Add control parameters
         self._lock = asyncio.Lock()
         self._current_commands: dict[str, float] = {}
-        self._actuator_states: dict[int, dict[str, float]] = {}
 
         self._count_lowlevel = 0
         self._target_positions: dict[str, float] = {}  # Store target positions between updates
@@ -186,7 +204,8 @@ class MujocoSimulator:
 
                 self._current_commands[actuator_name] = command
 
-    async def configure_actuator(self, joint_id: int, configuration: dict[str, float]) -> None:
+    async def configure_actuator(self, joint_id: int, configuration: ConfigureActuatorRequest) -> None:
+        """Configure an actuator using real joint ID."""
         async with self._lock:
             if joint_id not in self._joint_id_to_actuator_id:
                 raise KeyError(
@@ -194,31 +213,16 @@ class MujocoSimulator:
                     f"The available joint IDs are {self._joint_id_to_actuator_id.keys()}"
                 )
             actuator_id = self._joint_id_to_actuator_id[joint_id]
-            if actuator_id not in self._actuator_states:
-                self._actuator_states[actuator_id] = {}
-            self._actuator_states[actuator_id].update(configuration)
 
             if "kp" in configuration:
                 self._model.actuator_gainprm[actuator_id, 0] = configuration["kp"]
                 logger.info("Set kp for actuator %s to %f", joint_id, configuration["kp"])
+
             if "kd" in configuration:
                 self._model.actuator_biasprm[actuator_id, 2] = configuration["kd"]
                 logger.info("Set kd for actuator %s to %f", joint_id, configuration["kd"])
 
-            torque_enabled = configuration.get("torque_enabled", False)
-            if not torque_enabled:
-                self._actuator_states[actuator_id]["saved_min_tau"] = self._model.actuator_forcerange[actuator_id, 0]
-                self._actuator_states[actuator_id]["saved_max_tau"] = self._model.actuator_forcerange[actuator_id, 1]
-                self._model.actuator_forcerange[actuator_id, 0] = 0
-                self._model.actuator_forcerange[actuator_id, 1] = 0
-                logger.info("Set torque_enabled for actuator %s to %s", joint_id, torque_enabled)
-
-            elif "saved_min_tau" in self._actuator_states[actuator_id]:
-                self._model.actuator_forcerange[actuator_id, 0] = self._actuator_states[actuator_id]["saved_min_tau"]
-                self._model.actuator_forcerange[actuator_id, 1] = self._actuator_states[actuator_id]["saved_max_tau"]
-                logger.info("Set torque_enabled for actuator %s to %s", joint_id, torque_enabled)
-
-            if "max_torque" in configuration and torque_enabled:
+            if "max_torque" in configuration:
                 self._model.actuator_forcerange[actuator_id, 0] = -configuration["max_torque"]
                 self._model.actuator_forcerange[actuator_id, 1] = configuration["max_torque"]
                 logger.info("Set max_torque for actuator %s to +/- %f", joint_id, configuration["max_torque"])
@@ -226,8 +230,8 @@ class MujocoSimulator:
     async def reset(self, qpos: list[float] | None = None) -> None:
         """Reset simulation to specified or default state."""
         mujoco.mj_resetData(self._model, self._data)
-        if qpos is None:
-            self._data.qpos[:] = qpos
+        if qpos is not None:
+            self._data.qpos[: len(qpos)] = qpos
         self._data.qvel[:] = np.zeros_like(self._data.qvel)
         self._data.qacc[:] = np.zeros_like(self._data.qacc)
         mujoco.mj_forward(self._model, self._data)

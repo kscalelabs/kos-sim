@@ -15,7 +15,7 @@ from kos_protos import (
 )
 
 from kos_sim import logger
-from kos_sim.simulator import MujocoSimulator
+from kos_sim.simulator import ConfigureActuatorRequest, MujocoSimulator
 from kos_sim.stepping import StepController
 
 
@@ -92,7 +92,7 @@ class SimService(sim_pb2_grpc.SimulationServiceServicer):
             if params.HasField("initial_state"):
                 logger.debug("Setting initial state: %s", params.initial_state)
                 qpos = list(params.initial_state.qpos)
-                await self.simulator.reset(position=None, orientation=qpos[3:7] if len(qpos) >= 7 else None)
+                await self.simulator.reset(qpos)
             await self.step_controller.set_paused(False)
             return common_pb2.ActionResponse(success=True)
         except Exception as e:
@@ -136,6 +136,7 @@ class ActuatorService(actuator_pb2_grpc.ActuatorServiceServicer):
     ) -> actuator_pb2.CommandActuatorsResponse:
         """Implements CommandActuators by forwarding to simulator."""
         try:
+            # Convert degrees to radians.
             commands = {cmd.actuator_id: math.radians(cmd.position) for cmd in request.commands}
             await self.simulator.command_actuators(commands)
             return actuator_pb2.CommandActuatorsResponse()
@@ -173,7 +174,7 @@ class ActuatorService(actuator_pb2_grpc.ActuatorServiceServicer):
         request: actuator_pb2.ConfigureActuatorRequest,
         context: grpc.ServicerContext,
     ) -> common_pb2.ActionResponse:
-        configuration = {}
+        configuration: ConfigureActuatorRequest = {}
         if request.HasField("torque_enabled"):
             configuration["torque_enabled"] = request.torque_enabled
         if request.HasField("zero_position"):

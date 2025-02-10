@@ -112,7 +112,7 @@ class SimulationServer:
         self._stop_event.set()
         if self._server is not None:
             await self._server.stop(0)
-        self.simulator.close()
+        await self.simulator.close()
 
 
 async def get_model_metadata(api: K, model_name: str) -> RobotURDFMetadataOutput:
@@ -122,6 +122,8 @@ async def get_model_metadata(api: K, model_name: str) -> RobotURDFMetadataOutput
     model_path.parent.mkdir(parents=True, exist_ok=True)
     robot_class = await api.get_robot_class(model_name)
     metadata = robot_class.metadata
+    if metadata is None:
+        raise ValueError(f"No metadata found for model {model_name}")
     model_path.write_text(metadata.model_dump_json())
     return metadata
 

@@ -66,31 +66,27 @@ async def test_client(host: str = "localhost", port: int = 50051) -> None:
 
         logger.info("Starting control loop...")
         start_time = time.time()
+        next_time = start_time + 1 / 50
 
         while True:
             current_time = time.time() - start_time
+            position = 30.0 * math.sin(2 * math.pi * current_time / 2.0)
 
-            # Create commands for all actuators
-            commands = []
-            for actuator in ACTUATOR_LIST:
-                position = 30.0 * math.sin(2 * math.pi * current_time / 2.0)
-
-                # TODO: Testing commanding the actuators to zero position.
-                # position *= 0.0
-
-                commands.append(
+            # Send commands to all actuators
+            await kos.actuator.command_actuators(
+                [
                     {
                         "actuator_id": actuator.actuator_id,
                         "position": position,
                     }
-                )
-
-            # Send commands to all actuators
-            logger.info("Sending commands %s", commands)
-            await kos.actuator.command_actuators(commands)
+                    for actuator in ACTUATOR_LIST
+                ]
+            )
 
             # Run at 50Hz
-            await asyncio.sleep(1 / 50)
+            if current_time < next_time:
+                await asyncio.sleep(next_time - current_time)
+            next_time += 1 / 50
 
 
 async def main() -> None:

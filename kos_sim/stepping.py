@@ -15,7 +15,7 @@ class StepMode(Enum):
 class Steppable(Protocol):
     """Protocol for objects that can be stepped."""
 
-    def step(self) -> None: ...
+    async def step(self) -> None: ...
 
 
 class StepController:
