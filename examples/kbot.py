@@ -54,15 +54,13 @@ async def test_client(host: str = "localhost", port: int = 50051) -> None:
         # Reset the simulation.
         await kos.sim.reset()
 
-        await asyncio.sleep(1.0)
-
         # Configure all actuators
         for actuator in ACTUATOR_LIST:
             await kos.actuator.configure_actuator(
                 actuator_id=actuator.actuator_id,
                 # kp=actuator.kp,
                 # kd=actuator.kd,
-                max_torque=actuator.max_torque,
+                # max_torque=actuator.max_torque,
                 torque_enabled=True,
             )
 
@@ -75,8 +73,11 @@ async def test_client(host: str = "localhost", port: int = 50051) -> None:
             # Create commands for all actuators
             commands = []
             for actuator in ACTUATOR_LIST:
-                # position = math.sin(2 * math.pi * current_time / 25.0) * math.pi / 4
-                position = 0.0
+                position = 30.0 * math.sin(2 * math.pi * current_time / 2.0)
+
+                # TODO: Testing commanding the actuators to zero position.
+                # position *= 0.0
+
                 commands.append(
                     {
                         "actuator_id": actuator.actuator_id,

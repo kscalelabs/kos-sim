@@ -33,7 +33,7 @@ class SimService(sim_pb2_grpc.SimulationServiceServicer):
     ) -> common_pb2.ActionResponse:
         """Reset the simulation to initial or specified state."""
         logger.info("Reset request received")
-        self.step_controller.set_paused(True)
+        await self.step_controller.set_paused(True)
         try:
             if request.HasField("initial_state"):
                 qpos = list(request.initial_state.qpos)
@@ -71,26 +71,7 @@ class SimService(sim_pb2_grpc.SimulationServiceServicer):
         request: sim_pb2.StepRequest,
         context: grpc.ServicerContext,
     ) -> common_pb2.ActionResponse:
-        """Step the simulation forward."""
-        logger.info(
-            "Step request received: num_steps=%d, step_size=%s",
-            request.num_steps,
-            request.step_size if request.HasField("step_size") else "default",
-        )
-        try:
-            if request.HasField("step_size"):
-                original_dt = self.simulator._model.opt.timestep
-                self.simulator._model.opt.timestep = request.step_size
-            await self.step_controller.request_steps(request.num_steps)
-            if request.HasField("step_size"):
-                self.simulator._model.opt.timestep = original_dt
-
-            return common_pb2.ActionResponse(success=True)
-        except Exception as e:
-            logger.error("Step failed: %s", e)
-            context.set_code(grpc.StatusCode.INTERNAL)
-            context.set_details(str(e))
-            return common_pb2.ActionResponse(success=False, error=str(e))
+        raise NotImplementedError("Step is not implemented")
 
     async def SetParameters(  # noqa: N802
         self,
@@ -104,14 +85,14 @@ class SimService(sim_pb2_grpc.SimulationServiceServicer):
             params = request.parameters
             if params.HasField("time_scale"):
                 logger.debug("Setting time scale to %f", params.time_scale)
-                self.simulator._model.opt.timestep = self.simulator._config.dt / params.time_scale
+                self.simulator._model.opt.timestep = self.simulator._dt / params.time_scale
             if params.HasField("gravity"):
                 logger.debug("Setting gravity to %f", params.gravity)
                 self.simulator._model.opt.gravity[2] = params.gravity
             if params.HasField("initial_state"):
                 logger.debug("Setting initial state: %s", params.initial_state)
                 qpos = list(params.initial_state.qpos)
-                self.simulator.reset(position=None, orientation=qpos[3:7] if len(qpos) >= 7 else None)
+                await self.simulator.reset(position=None, orientation=qpos[3:7] if len(qpos) >= 7 else None)
             await self.step_controller.set_paused(False)
             return common_pb2.ActionResponse(success=True)
         except Exception as e:
@@ -129,7 +110,7 @@ class SimService(sim_pb2_grpc.SimulationServiceServicer):
         logger.info("GetParameters request received")
         try:
             params = sim_pb2.SimulationParameters(
-                time_scale=self.simulator._config.dt / self.simulator._model.opt.timestep,
+                time_scale=self.simulator._dt / self.simulator._model.opt.timestep,
                 gravity=float(self.simulator._model.opt.gravity[2]),
             )
             logger.debug("Current parameters: time_scale=%f, gravity=%f", params.time_scale, params.gravity)
@@ -156,7 +137,7 @@ class ActuatorService(actuator_pb2_grpc.ActuatorServiceServicer):
         """Implements CommandActuators by forwarding to simulator."""
         try:
             commands = {cmd.actuator_id: math.radians(cmd.position) for cmd in request.commands}
-            self.simulator.command_actuators(commands)
+            await self.simulator.command_actuators(commands)
             return actuator_pb2.CommandActuatorsResponse()
         except Exception as e:
             context.set_code(grpc.StatusCode.INTERNAL)
@@ -171,8 +152,8 @@ class ActuatorService(actuator_pb2_grpc.ActuatorServiceServicer):
         """Implements GetActuatorsState by reading from simulator."""
         try:
             states = {
-                joint_id: self.simulator.get_actuator_state(joint_id)
-                for joint_id in self.simulator._config.joint_id_to_name.keys()
+                joint_id: await self.simulator.get_actuator_state(joint_id)
+                for joint_id in self.simulator._joint_id_to_name.keys()
             }
             return actuator_pb2.GetActuatorsStateResponse(
                 states=[
@@ -203,7 +184,7 @@ class ActuatorService(actuator_pb2_grpc.ActuatorServiceServicer):
             configuration["kd"] = request.kd
         if request.HasField("max_torque"):
             configuration["max_torque"] = request.max_torque
-        self.simulator.configure_actuator(request.actuator_id, configuration)
+        await self.simulator.configure_actuator(request.actuator_id, configuration)
 
         return common_pb2.ActionResponse(success=True)
 
@@ -222,7 +203,7 @@ class IMUService(imu_pb2_grpc.IMUServiceServicer):
     ) -> imu_pb2.IMUValuesResponse:
         """Implements GetValues by reading IMU sensor data from simulator."""
         try:
-            imu_data = self.simulator.get_sensor_data("imu")
+            imu_data = await self.simulator.get_sensor_data("imu")
             return imu_pb2.IMUValuesResponse(
                 accelerometer=imu_pb2.Vector3(x=float(imu_data[0]), y=float(imu_data[1]), z=float(imu_data[2])),
                 gyroscope=imu_pb2.Vector3(x=float(imu_data[3]), y=float(imu_data[4]), z=float(imu_data[5])),
@@ -239,7 +220,7 @@ class IMUService(imu_pb2_grpc.IMUServiceServicer):
     ) -> imu_pb2.QuaternionResponse:
         """Implements GetQuaternion by reading orientation data from simulator."""
         try:
-            quat_data = self.simulator.get_sensor_data("base_link_quat")
+            quat_data = await self.simulator.get_sensor_data("base_link_quat")
             return imu_pb2.QuaternionResponse(
                 w=float(quat_data[0]), x=float(quat_data[1]), y=float(quat_data[2]), z=float(quat_data[3])
             )
@@ -255,7 +236,7 @@ class IMUService(imu_pb2_grpc.IMUServiceServicer):
     ) -> imu_pb2.EulerAnglesResponse:
         """Implements GetEuler by converting orientation quaternion to Euler angles."""
         try:
-            quat_data = self.simulator.get_sensor_data("base_link_quat")
+            quat_data = await self.simulator.get_sensor_data("base_link_quat")
             # Extract quaternion components
             w, x, y, z = [float(q) for q in quat_data]
 
