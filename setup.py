@@ -27,8 +27,8 @@ version: str = version_re.group(1)
 setup(
     name="kos-sim",
     version=version,
-    description="The kos-sim project",
-    author="Wesley Maa",
+    description="The simulator backend for the K-Scale Operating System (KOS)",
+    author="K-Scale Labs <ben@kscale.dev>",
     url="https://github.com/kscalelabs/kos-sim.git",
     long_description=long_description,
     long_description_content_type="text/markdown",

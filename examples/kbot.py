@@ -57,9 +57,9 @@ async def test_client(host: str = "localhost", port: int = 50051) -> None:
         for actuator in ACTUATOR_LIST:
             await kos.actuator.configure_actuator(
                 actuator_id=actuator.actuator_id,
-                # kp=actuator.kp,
-                # kd=actuator.kd,
-                # max_torque=actuator.max_torque,
+                kp=actuator.kp,
+                kd=actuator.kd,
+                max_torque=actuator.max_torque,
                 torque_enabled=True,
             )
 

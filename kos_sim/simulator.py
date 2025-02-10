@@ -216,11 +216,11 @@ class MujocoSimulator:
             actuator_id = self._joint_id_to_actuator_id[joint_id]
 
             if "kp" in configuration:
-                self._model.actuator_gainprm[actuator_id, 0] = configuration["kp"]
+                self._model.actuator_gainprm[actuator_id, 0] = -configuration["kp"]
                 logger.info("Set kp for actuator %s to %f", joint_id, configuration["kp"])
 
             if "kd" in configuration:
-                self._model.actuator_biasprm[actuator_id, 2] = configuration["kd"]
+                self._model.actuator_biasprm[actuator_id, 2] = -configuration["kd"]
                 logger.info("Set kd for actuator %s to %f", joint_id, configuration["kd"])
 
             if "max_torque" in configuration:
