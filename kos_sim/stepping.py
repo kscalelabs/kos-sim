@@ -1,6 +1,6 @@
 """Stepping controller for the simulation."""
 
-import threading
+import asyncio
 from enum import Enum, auto
 from typing import Protocol
 
@@ -15,7 +15,7 @@ class StepMode(Enum):
 class Steppable(Protocol):
     """Protocol for objects that can be stepped."""
 
-    def step(self) -> None: ...
+    async def step(self) -> None: ...
 
 
 class StepController:
@@ -25,7 +25,7 @@ class StepController:
         self.steppable = steppable
         self.mode = mode
         self._paused = False
-        self._lock = threading.Lock()
+        self._lock = asyncio.Lock()
         self._step_request = False
         self._num_steps = 0
 
@@ -33,20 +33,20 @@ class StepController:
     def paused(self) -> bool:
         return self._paused
 
-    def set_paused(self, paused: bool) -> None:
+    async def set_paused(self, paused: bool) -> None:
         """Pause or unpause the simulation."""
-        with self._lock:
+        async with self._lock:
             self._paused = paused
 
-    def request_steps(self, num_steps: int = 1) -> None:
+    async def request_steps(self, num_steps: int = 1) -> None:
         """Request a number of steps to be taken."""
-        with self._lock:
+        async with self._lock:
             self._step_request = True
             self._num_steps = num_steps
 
-    def should_step(self) -> bool:
+    async def should_step(self) -> bool:
         """Check if a step should be taken."""
-        with self._lock:
+        async with self._lock:
             if self.mode == StepMode.CONTINUOUS:
                 return not self._paused
 

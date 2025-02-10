@@ -1,18 +1,41 @@
 """Wrapper around MuJoCo simulation."""
 
-import argparse
 import asyncio
-import threading
+from dataclasses import dataclass, field
 from pathlib import Path
+from typing import NotRequired, TypedDict, TypeVar
 
-import colorlogging
 import mujoco
 import mujoco_viewer
 import numpy as np
-from kscale import K
 from kscale.web.gen.api import RobotURDFMetadataOutput
 
 from kos_sim import logger
+
+T = TypeVar("T")
+
+
+def _nn(value: T | None) -> T:
+    if value is None:
+        raise ValueError("Value is not set")
+    return value
+
+
+class ConfigureActuatorRequest(TypedDict):
+    torque_enabled: NotRequired[bool]
+    zero_position: NotRequired[float]
+    kp: NotRequired[float]
+    kd: NotRequired[float]
+    max_torque: NotRequired[float]
+
+
+@dataclass
+class SimulationConfig:
+    dt: float = field(default=0.001)
+    sim_decimation: int = field(default=1)
+    gravity: bool = field(default=True)
+    render: bool = field(default=True)
+    suspended: bool = field(default=False)
 
 
 class MujocoSimulator:
@@ -20,20 +43,41 @@ class MujocoSimulator:
         self,
         model_path: str | Path,
         model_metadata: RobotURDFMetadataOutput,
-        render: bool = False,
+        dt: float = 0.001,
         gravity: bool = True,
+        render: bool = True,
         suspended: bool = False,
     ) -> None:
-        # Load config or use default
+        # Stores parameters.
+        self._model_path = model_path
         self._metadata = model_metadata
+        self._dt = dt
+        self._gravity = gravity
+        self._render = render
+        self._suspended = suspended
+
+        # Gets the sim decimation.
+        if (control_frequency := self._metadata.control_frequency) is None:
+            raise ValueError("Control frequency is not set")
+        self._control_frequency = float(control_frequency)
+        self._sim_decimation = int(1 / self._control_frequency / self._dt)
+
+        # Gets the joint name mapping.
+        if self._metadata.joint_name_to_metadata is None:
+            raise ValueError("Joint name to metadata is not set")
+        self._joint_name_to_id = {name: _nn(joint.id) for name, joint in self._metadata.joint_name_to_metadata.items()}
+        self._joint_id_to_name = {v: k for k, v in self._joint_name_to_id.items()}
+        if len(self._joint_name_to_id) != len(self._joint_id_to_name):
+            raise ValueError("Joint IDs are not unique!")
 
         # Load MuJoCo model and initialize data
+        logger.info("Loading model from %s", model_path)
         self._model = mujoco.MjModel.from_xml_path(str(model_path))
-        self._model.opt.timestep = self._config.dt  # Use dt from config
+        self._model.opt.timestep = self._dt
         self._data = mujoco.MjData(self._model)
 
-        self._gravity = gravity
-        self._suspended = suspended
+        self._gravity = self._gravity
+        self._suspended = self._suspended
         self._initial_pos = None
         self._initial_quat = None
 
@@ -58,46 +102,50 @@ class MujocoSimulator:
         mujoco.mj_forward(self._model, self._data)
 
         # Setup viewer after initial step
-        self._render_enabled = render
-        if render:
-            self._viewer = mujoco_viewer.MujocoViewer(self._model, self._data)
-        else:
-            self._viewer = mujoco_viewer.MujocoViewer(self._model, self._data, "offscreen")
+        self._render_enabled = self._render
+        self._viewer = mujoco_viewer.MujocoViewer(
+            self._model,
+            self._data,
+            mode="window" if self._render_enabled else "offscreen",
+        )
 
         # Cache lookups after initialization
-        self._sensor_ids = {self._model.sensor(i).name: i for i in range(self._model.nsensor)}
-        self._actuator_ids = {self._model.actuator(i).name: i for i in range(self._model.nu)}
+        self._sensor_name_to_id = {self._model.sensor(i).name: i for i in range(self._model.nsensor)}
+        logger.debug("Sensor IDs: %s", self._sensor_name_to_id)
+        self._actuator_name_to_id = {self._model.actuator(i).name: i for i in range(self._model.nu)}
+        logger.debug("Actuator IDs: %s", self._actuator_name_to_id)
+
+        # There is an important distinction between actuator IDs and joint IDs.
+        # joint IDs should be at the kos layer, where the canonical IDs are assigned (see docs.kscale.dev)
+        # but actuator IDs are at the mujoco layer, where the actuators actually get mapped.
+        logger.debug("Joint ID to name: %s", self._joint_id_to_name)
+        self._joint_id_to_actuator_id = {
+            joint_id: self._actuator_name_to_id[f"{name}_ctrl"] for joint_id, name in self._joint_id_to_name.items()
+        }
 
         # Add control parameters
-        self._lock = threading.Lock()
+        self._lock = asyncio.Lock()
         self._current_commands: dict[str, float] = {}
-
-        # Use config for control parameters
-        self._kp = np.array([self._config.kp] * self._model.nu)
-        self._kd = np.array([self._config.kd] * self._model.nu)
 
         self._count_lowlevel = 0
         self._target_positions: dict[str, float] = {}  # Store target positions between updates
 
-    def step(self) -> None:
+        self.pd_counter = 0
+
+    async def step(self) -> None:
         """Execute one step of the simulation."""
-        with self._lock:
+        async with self._lock:
             # Only update commands every sim_decimation steps
-            if self._count_lowlevel % self._config.sim_decimation == 0:
+            if self._count_lowlevel % self._sim_decimation == 0:
                 self._target_positions = self._current_commands.copy()
 
-            # Apply actuator commands using PD control
+            # Apply position control commands directly to actuators
             for name, target_pos in self._target_positions.items():
-                actuator_id = self._actuator_ids[name]
-                current_pos = self._data.qpos[actuator_id]
-                current_vel = self._data.qvel[actuator_id]
+                actuator_id = self._actuator_name_to_id[name]
+                self._data.ctrl[actuator_id] = target_pos
 
-                # PD control law
-                tau = self._kp[actuator_id] * (target_pos - current_pos) - self._kd[actuator_id] * current_vel
-                self._data.ctrl[actuator_id] = tau
-
-        # Step physics
-        mujoco.mj_step(self._model, self._data)
+        # Step physics - allow other coroutines to run during computation
+        await asyncio.get_event_loop().run_in_executor(None, mujoco.mj_step, self._model, self._data)
 
         # Increment counter
         self._count_lowlevel += 1
@@ -106,90 +154,90 @@ class MujocoSimulator:
             # Find the root joint (floating_base)
             for i in range(self._model.njnt):
                 if self._model.jnt_type[i] == mujoco.mjtJoint.mjJNT_FREE:
-                    print(f"Joint name: {self._model.joint(i).name}")
                     self._data.qpos[i : i + 7] = self._model.keyframe("default").qpos[i : i + 7]
                     self._data.qvel[i : i + 6] = 0
                     break
 
         return self._data
 
-    def render(self) -> None:
+    async def render(self) -> None:
+        """Render the simulation asynchronously."""
         if self._render_enabled:
             self._viewer.render()
 
-    def get_sensor_data(self, name: str) -> np.ndarray:
+    async def get_sensor_data(self, name: str) -> np.ndarray:
         """Get data from a named sensor."""
-        if name not in self._sensor_ids:
-            raise KeyError(f"Sensor '{name}' not found")
-        sensor_id = self._sensor_ids[name]
-        return self._data.sensor(sensor_id).data.copy()
+        async with self._lock:
+            if name not in self._sensor_name_to_id:
+                raise KeyError(f"Sensor '{name}' not found")
+            sensor_id = self._sensor_name_to_id[name]
+            return self._data.sensor(sensor_id).data.copy()
 
-    def get_actuator_state(self, joint_id: int) -> float:
+    async def get_actuator_state(self, joint_id: int) -> float:
         """Get current state of an actuator using real joint ID."""
-        if joint_id not in self._config.joint_id_to_name:
-            raise KeyError(f"Joint ID {joint_id} not found in config mappings")
+        async with self._lock:
+            if joint_id not in self._joint_id_to_name:
+                raise KeyError(f"Joint ID {joint_id} not found in config mappings")
 
-        joint_name = self._config.joint_id_to_name[joint_id]
-        if joint_name not in self._actuator_ids:
-            raise KeyError(f"Joint {joint_name} not found in MuJoCo model")
+            joint_name = self._joint_id_to_name[joint_id]
+            actuator_name = f"{joint_name}_ctrl"
+            if actuator_name not in self._actuator_name_to_id:
+                raise KeyError(f"Joint {joint_name} not found in MuJoCo model")
 
-        actuator_id = self._actuator_ids[joint_name]
+            actuator_id = self._actuator_name_to_id[joint_name]
         return float(self._data.qpos[actuator_id])
 
-    def command_actuators(self, commands: dict[int, float]) -> None:
+    async def command_actuators(self, commands: dict[int, float]) -> None:
         """Command multiple actuators at once using real joint IDs."""
-        with self._lock:
+        async with self._lock:
             for joint_id, command in commands.items():
                 # Translate real joint ID to MuJoCo joint name
-                if joint_id not in self._config.joint_id_to_name:
+                if joint_id not in self._joint_id_to_name:
                     logger.warning("Joint ID %d not found in config mappings", joint_id)
                     continue
 
-                joint_name = self._config.joint_id_to_name[joint_id]
-                if joint_name not in self._actuator_ids:
-                    logger.warning("Joint %s not found in MuJoCo model", joint_name)
+                joint_name = self._joint_id_to_name[joint_id]
+                actuator_name = f"{joint_name}_ctrl"
+                if actuator_name not in self._actuator_name_to_id:
+                    logger.warning("Joint %s not found in MuJoCo model", actuator_name)
                     continue
 
-                self._current_commands[joint_name] = command
+                logger.debug("Setting actuator %s to %f", actuator_name, command)
+                self._current_commands[actuator_name] = command
 
-    def reset(self, position: dict[str, float] | None = None, orientation: list[float] | None = None) -> None:
-        """Reset simulation to specified or default state.
+    async def configure_actuator(self, joint_id: int, configuration: ConfigureActuatorRequest) -> None:
+        """Configure an actuator using real joint ID."""
+        async with self._lock:
+            if joint_id not in self._joint_id_to_actuator_id:
+                raise KeyError(
+                    f"Joint ID {joint_id} not found in config mappings. "
+                    f"The available joint IDs are {self._joint_id_to_actuator_id.keys()}"
+                )
+            actuator_id = self._joint_id_to_actuator_id[joint_id]
 
-        Args:
-            position: Dict of joint names to positions (radians)
-            orientation: Quaternion [w, x, y, z] for base orientation
-        """
+            if "kp" in configuration:
+                self._model.actuator_gainprm[actuator_id, 0] = configuration["kp"]
+                logger.info("Set kp for actuator %s to %f", joint_id, configuration["kp"])
+
+            if "kd" in configuration:
+                self._model.actuator_biasprm[actuator_id, 2] = configuration["kd"]
+                logger.info("Set kd for actuator %s to %f", joint_id, configuration["kd"])
+
+            if "max_torque" in configuration:
+                self._model.actuator_forcerange[actuator_id, 0] = -configuration["max_torque"]
+                self._model.actuator_forcerange[actuator_id, 1] = configuration["max_torque"]
+                logger.info("Set max_torque for actuator %s to +/- %f", joint_id, configuration["max_torque"])
+
+    async def reset(self, qpos: list[float] | None = None) -> None:
+        """Reset simulation to specified or default state."""
         mujoco.mj_resetData(self._model, self._data)
-
-        # Set joint positions if provided, otherwise use defaults
-        if position is not None:
-            for joint_name, pos in position.items():
-                if joint_name in self._actuator_ids:
-                    self._data.qpos[self._actuator_ids[joint_name]] = pos
-        else:
-            try:
-                self._data.qpos = self._model.keyframe("default").qpos
-            except Exception:
-                self._data.qpos = np.zeros_like(self._data.qpos)
-
-        # Set orientation if provided
-        if orientation is not None:
-            # Find the free joint that controls base orientation
-            for i in range(self._model.njnt):
-                if self._model.jnt_type[i] == mujoco.mjtJoint.mjJNT_FREE:
-                    # Set quaternion part of the free joint
-                    self._data.qpos[i : i + 4] = orientation
-                    break
-
-        # Reset velocities and accelerations
-        self._data.qvel = np.zeros_like(self._data.qvel)
-        self._data.qacc = np.zeros_like(self._data.qacc)
-
-        # Re-initialize state
+        if qpos is not None:
+            self._data.qpos[: len(qpos)] = qpos
+        self._data.qvel[:] = np.zeros_like(self._data.qvel)
+        self._data.qacc[:] = np.zeros_like(self._data.qacc)
         mujoco.mj_forward(self._model, self._data)
-        mujoco.mj_step(self._model, self._data)
 
-    def close(self) -> None:
+    async def close(self) -> None:
         """Clean up simulation resources."""
         if self._viewer is not None:
             try:
@@ -201,54 +249,3 @@ class MujocoSimulator:
     @property
     def timestep(self) -> float:
         return self._model.opt.timestep
-
-
-async def test_simulation_adhoc(
-    model_name: str, duration: float = 5.0, speed: float = 1.0, render: bool = True
-) -> None:
-    api = K()
-    model_dir = await api.download_and_extract_urdf(model_name)
-    model_path = next(model_dir.glob("*.mjcf"))
-
-    simulator = MujocoSimulator(model_path, render=render)
-
-    timestep = simulator.timestep
-    initial_update = last_update = asyncio.get_event_loop().time()
-
-    while True:
-        current_time = asyncio.get_event_loop().time()
-        if current_time - initial_update > duration:
-            break
-
-        sim_time = current_time - last_update
-        last_update = current_time
-        while sim_time > 0:
-            simulator.step()
-            sim_time -= timestep
-
-        simulator.render()
-
-    simulator.close()
-
-
-async def main() -> None:
-    parser = argparse.ArgumentParser(description="Test the MuJoCo simulation.")
-    parser.add_argument("model_name", type=str, help="Name of the model to simulate")
-    parser.add_argument("--duration", type=float, default=5.0, help="Duration to run simulation (seconds)")
-    parser.add_argument("--speed", type=float, default=1.0, help="Simulation speed multiplier")
-    parser.add_argument("--no-render", action="store_true", help="Disable rendering")
-
-    colorlogging.configure()
-
-    args = parser.parse_args()
-    await test_simulation_adhoc(
-        args.model_name,
-        duration=args.duration,
-        speed=args.speed,
-        render=not args.no_render,
-    )
-
-
-if __name__ == "__main__":
-    # python -m kos_sim.simulator
-    asyncio.run(main())
