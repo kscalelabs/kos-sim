@@ -3,8 +3,6 @@
 import argparse
 import asyncio
 import logging
-import math
-import time
 from dataclasses import dataclass
 
 import colorlogging
@@ -63,31 +61,74 @@ async def test_client(host: str = "localhost", port: int = 50051) -> None:
                 torque_enabled=True,
             )
 
-        logger.info("Starting control loop...")
-        start_time = time.time()
-        next_time = start_time + 1 / 50
+        await kos.actuator.command_actuators(
+            [
+                {
+                    "actuator_id": actuator.actuator_id,
+                    "position": 0.0,
+                }
+                for actuator in ACTUATOR_LIST
+            ]
+        )
 
-        while True:
-            current_time = time.time()
-            position = 30.0 * math.sin(2 * math.pi * (current_time - start_time) / 2.0)
+        # logger.info("Starting control loop...")
+        # start_time = time.time()
+        # next_time = start_time + 1 / 50
 
-            # Send commands to all actuator.
-            logger.debug("Sending commands to all actuators")
-            await kos.actuator.command_actuators(
-                [
-                    {
-                        "actuator_id": actuator.actuator_id,
-                        "position": position,
-                    }
-                    for actuator in ACTUATOR_LIST
-                ]
-            )
+        # while True:
+        #     current_time = time.time()
+        #     position = 30.0 * math.sin(2 * math.pi * (current_time - start_time) / 2.0)
 
-            # Run at 50Hz
-            if current_time < next_time:
-                logger.debug("Sleeping for %f seconds", next_time - current_time)
-                await asyncio.sleep(next_time - current_time)
-            next_time += 1 / 50
+        #     # Send commands to all actuator.
+        #     logger.debug("Sending commands to all actuators")
+        #     await kos.actuator.command_actuators(
+        #         [
+        #             {
+        #                 "actuator_id": actuator.actuator_id,
+        #                 "position": position,
+        #             }
+        #             for actuator in ACTUATOR_LIST
+        #         ]
+        #     )
+
+        #     # Run at 50Hz
+        #     if current_time < next_time:
+        #         logger.debug("Sleeping for %f seconds", next_time - current_time)
+        #         await asyncio.sleep(next_time - current_time)
+        #     next_time += 1 / 50
+
+        await kos.actuator.command_actuators(
+            [
+                # Right leg.
+                {
+                    "actuator_id": 41,  # right_hip_pitch_04
+                    "position": 30.0,
+                },
+                {
+                    "actuator_id": 44,  # right_knee_04
+                    "position": -40.0,
+                },
+                {
+                    "actuator_id": 45,  # right_ankle_02
+                    "position": -30.0,
+                },
+                # Left leg.
+                {
+                    "actuator_id": 31,  # left_hip_pitch_04
+                    "position": -30.0,
+                },
+                {
+                    "actuator_id": 34,  # left_knee_04
+                    "position": 40.0,
+                },
+                {
+                    "actuator_id": 35,  # left_ankle_02
+                    "position": 30.0,
+                },
+            ]
+        )
+
+        await asyncio.sleep(10.0)
 
 
 async def main() -> None:
