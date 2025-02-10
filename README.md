@@ -7,3 +7,19 @@
 ```bash
 pip install kos-sim
 ```
+
+## Getting Started
+
+First, start the `kos-sim` backend:
+
+```bash
+kos-sim kbot-v1
+```
+
+Then, in a separate terminal, run the example client:
+
+```bash
+python -m examples.kbot
+```
+
+You should see the simulated K-Bot move in response to the client commands.
