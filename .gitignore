@@ -19,6 +19,7 @@ build/
 dist/
 *.so
 out*/
+MUJOCO_LOG.TXT
 
 # dev
 ref/

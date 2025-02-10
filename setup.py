@@ -25,7 +25,7 @@ version: str = version_re.group(1)
 
 
 setup(
-    name="kos_sim",
+    name="kos-sim",
     version=version,
     description="The kos-sim project",
     author="Wesley Maa",

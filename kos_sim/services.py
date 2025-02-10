@@ -15,7 +15,7 @@ from kos_protos import (
 )
 
 from kos_sim import logger
-from kos_sim.mujoco_simulator import MujocoSimulator
+from kos_sim.simulator import MujocoSimulator
 from kos_sim.stepping import StepController
 
 
@@ -32,17 +32,17 @@ class SimService(sim_pb2_grpc.SimulationServiceServicer):
         context: grpc.ServicerContext,
     ) -> common_pb2.ActionResponse:
         """Reset the simulation to initial or specified state."""
-        logger.info("Reset request received: %s", request)
+        logger.info("Reset request received")
         self.step_controller.set_paused(True)
         try:
             if request.HasField("initial_state"):
                 qpos = list(request.initial_state.qpos)
                 logger.debug("Resetting with qpos: %s", qpos)
-                self.simulator.reset(qpos=qpos)
+                await self.simulator.reset(qpos=qpos)
             else:
                 logger.debug("Resetting to default state")
-                self.simulator.reset()
-            self.step_controller.set_paused(False)
+                await self.simulator.reset()
+            await self.step_controller.set_paused(False)
             return common_pb2.ActionResponse(success=True)
         except Exception as e:
             logger.error("Reset failed: %s", e)
@@ -50,7 +50,7 @@ class SimService(sim_pb2_grpc.SimulationServiceServicer):
             context.set_details(str(e))
             return common_pb2.ActionResponse(success=False, error=str(e))
 
-    def SetPaused(  # noqa: N802
+    async def SetPaused(  # noqa: N802
         self,
         request: sim_pb2.SetPausedRequest,
         context: grpc.ServicerContext,
@@ -58,7 +58,7 @@ class SimService(sim_pb2_grpc.SimulationServiceServicer):
         """Pause or unpause the simulation."""
         logger.info("SetPaused request received: paused=%s", request.paused)
         try:
-            self.step_controller.set_paused(request.paused)
+            await self.step_controller.set_paused(request.paused)
             return common_pb2.ActionResponse(success=True)
         except Exception as e:
             logger.error("SetPaused failed: %s", e)
@@ -81,9 +81,7 @@ class SimService(sim_pb2_grpc.SimulationServiceServicer):
             if request.HasField("step_size"):
                 original_dt = self.simulator._model.opt.timestep
                 self.simulator._model.opt.timestep = request.step_size
-
-            self.step_controller.request_steps(request.num_steps)
-
+            await self.step_controller.request_steps(request.num_steps)
             if request.HasField("step_size"):
                 self.simulator._model.opt.timestep = original_dt
 
@@ -94,7 +92,7 @@ class SimService(sim_pb2_grpc.SimulationServiceServicer):
             context.set_details(str(e))
             return common_pb2.ActionResponse(success=False, error=str(e))
 
-    def SetParameters(  # noqa: N802
+    async def SetParameters(  # noqa: N802
         self,
         request: sim_pb2.SetParametersRequest,
         context: grpc.ServicerContext,
@@ -102,7 +100,7 @@ class SimService(sim_pb2_grpc.SimulationServiceServicer):
         """Set simulation parameters."""
         logger.info("SetParameters request received: %s", request)
         try:
-            self.step_controller.set_paused(True)
+            await self.step_controller.set_paused(True)
             params = request.parameters
             if params.HasField("time_scale"):
                 logger.debug("Setting time scale to %f", params.time_scale)
@@ -114,7 +112,7 @@ class SimService(sim_pb2_grpc.SimulationServiceServicer):
                 logger.debug("Setting initial state: %s", params.initial_state)
                 qpos = list(params.initial_state.qpos)
                 self.simulator.reset(position=None, orientation=qpos[3:7] if len(qpos) >= 7 else None)
-            self.step_controller.set_paused(False)
+            await self.step_controller.set_paused(False)
             return common_pb2.ActionResponse(success=True)
         except Exception as e:
             logger.error("SetParameters failed: %s", e)
@@ -122,7 +120,7 @@ class SimService(sim_pb2_grpc.SimulationServiceServicer):
             context.set_details(str(e))
             return common_pb2.ActionResponse(success=False, error=str(e))
 
-    def GetParameters(  # noqa: N802
+    async def GetParameters(  # noqa: N802
         self,
         request: empty_pb2.Empty,
         context: grpc.ServicerContext,
@@ -150,7 +148,7 @@ class ActuatorService(actuator_pb2_grpc.ActuatorServiceServicer):
         self.simulator = simulator
         self.step_controller = step_controller
 
-    def CommandActuators(  # noqa: N802
+    async def CommandActuators(  # noqa: N802
         self,
         request: actuator_pb2.CommandActuatorsRequest,
         context: grpc.ServicerContext,
@@ -165,7 +163,7 @@ class ActuatorService(actuator_pb2_grpc.ActuatorServiceServicer):
             context.set_details(str(e))
             return actuator_pb2.CommandActuatorsResponse()
 
-    def GetActuatorsState(  # noqa: N802
+    async def GetActuatorsState(  # noqa: N802
         self,
         request: empty_pb2.Empty,
         context: grpc.ServicerContext,
@@ -189,7 +187,7 @@ class ActuatorService(actuator_pb2_grpc.ActuatorServiceServicer):
             context.set_details(str(e))
             return actuator_pb2.GetActuatorsStateResponse()
 
-    def ConfigureActuator(
+    async def ConfigureActuator(  # noqa: N802
         self,
         request: actuator_pb2.ConfigureActuatorRequest,
         context: grpc.ServicerContext,
@@ -217,7 +215,7 @@ class IMUService(imu_pb2_grpc.IMUServiceServicer):
         self.simulator = simulator
         self.step_controller = step_controller
 
-    def GetValues(  # noqa: N802
+    async def GetValues(  # noqa: N802
         self,
         request: empty_pb2.Empty,
         context: grpc.ServicerContext,
@@ -234,7 +232,7 @@ class IMUService(imu_pb2_grpc.IMUServiceServicer):
             context.set_details(str(e))
             return imu_pb2.IMUValuesResponse()
 
-    def GetQuaternion(  # noqa: N802
+    async def GetQuaternion(  # noqa: N802
         self,
         request: empty_pb2.Empty,
         context: grpc.ServicerContext,
@@ -250,7 +248,7 @@ class IMUService(imu_pb2_grpc.IMUServiceServicer):
             context.set_details(str(e))
             return imu_pb2.QuaternionResponse()
 
-    def GetEuler(  # noqa: N802
+    async def GetEuler(  # noqa: N802
         self,
         request: empty_pb2.Empty,
         context: grpc.ServicerContext,
