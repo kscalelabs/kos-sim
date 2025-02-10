@@ -72,7 +72,7 @@ async def test_client(host: str = "localhost", port: int = 50051) -> None:
             position = 30.0 * math.sin(2 * math.pi * (current_time - start_time) / 2.0)
 
             # Send commands to all actuator.
-            logger.info("Sending commands to all actuators")
+            logger.debug("Sending commands to all actuators")
             await kos.actuator.command_actuators(
                 [
                     {
@@ -85,7 +85,7 @@ async def test_client(host: str = "localhost", port: int = 50051) -> None:
 
             # Run at 50Hz
             if current_time < next_time:
-                logger.info("Sleeping for %f seconds", next_time - current_time)
+                logger.debug("Sleeping for %f seconds", next_time - current_time)
                 await asyncio.sleep(next_time - current_time)
             next_time += 1 / 50
 
