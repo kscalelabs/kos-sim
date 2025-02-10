@@ -47,7 +47,6 @@ ACTUATOR_LIST: list[Actuator] = [
 
 
 async def test_client(host: str = "localhost", port: int = 50051) -> None:
-    colorlogging.configure(level=logging.DEBUG)
     logger.info("Starting test client...")
 
     async with KOS(ip=host, port=port) as kos:
@@ -69,10 +68,11 @@ async def test_client(host: str = "localhost", port: int = 50051) -> None:
         next_time = start_time + 1 / 50
 
         while True:
-            current_time = time.time() - start_time
-            position = 30.0 * math.sin(2 * math.pi * current_time / 2.0)
+            current_time = time.time()
+            position = 30.0 * math.sin(2 * math.pi * (current_time - start_time) / 2.0)
 
-            # Send commands to all actuators
+            # Send commands to all actuator.
+            logger.info("Sending commands to all actuators")
             await kos.actuator.command_actuators(
                 [
                     {
@@ -85,6 +85,7 @@ async def test_client(host: str = "localhost", port: int = 50051) -> None:
 
             # Run at 50Hz
             if current_time < next_time:
+                logger.info("Sleeping for %f seconds", next_time - current_time)
                 await asyncio.sleep(next_time - current_time)
             next_time += 1 / 50
 
@@ -94,14 +95,11 @@ async def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--host", type=str, default="localhost")
     parser.add_argument("--port", type=int, default=50051)
+    parser.add_argument("--debug", action="store_true")
     args = parser.parse_args()
 
-    logger.info("Starting test client...")
-
-    await test_client(
-        host=args.host,
-        port=args.port,
-    )
+    colorlogging.configure(level=logging.DEBUG if args.debug else logging.INFO)
+    await test_client(host=args.host, port=args.port)
 
 
 if __name__ == "__main__":

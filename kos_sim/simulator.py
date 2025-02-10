@@ -202,6 +202,7 @@ class MujocoSimulator:
                     logger.warning("Joint %s not found in MuJoCo model", actuator_name)
                     continue
 
+                logger.debug("Setting actuator %s to %f", actuator_name, command)
                 self._current_commands[actuator_name] = command
 
     async def configure_actuator(self, joint_id: int, configuration: ConfigureActuatorRequest) -> None:

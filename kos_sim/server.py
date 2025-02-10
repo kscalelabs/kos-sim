@@ -80,7 +80,7 @@ class SimulationServer:
                 sim_time = current_time - last_update
                 last_update = current_time
 
-                if self.step_controller.should_step():
+                if await self.step_controller.should_step():
                     while sim_time > 0:
                         await self.simulator.step()
                         sim_time -= self.simulator.timestep
