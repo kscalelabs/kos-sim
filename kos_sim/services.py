@@ -154,10 +154,7 @@ class ActuatorService(actuator_pb2_grpc.ActuatorServiceServicer):
         logger.info("GetActuatorsState request received")
         ids = request.actuator_ids or list(self.simulator._joint_id_to_name.keys())
         try:
-            states = {
-                joint_id: await self.simulator.get_actuator_state(joint_id)
-                for joint_id in ids
-            }
+            states = {joint_id: await self.simulator.get_actuator_state(joint_id) for joint_id in ids}
             return actuator_pb2.GetActuatorsStateResponse(
                 states=[
                     actuator_pb2.ActuatorStateResponse(

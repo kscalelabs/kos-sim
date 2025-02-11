@@ -28,6 +28,7 @@ class ConfigureActuatorRequest(TypedDict):
     kd: NotRequired[float]
     max_torque: NotRequired[float]
 
+
 @dataclass
 class ActuatorState:
     position: float
