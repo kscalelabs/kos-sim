@@ -1,6 +1,5 @@
 """Stepping controller for the simulation."""
 
-import asyncio
 from enum import Enum, auto
 from typing import Protocol
 
@@ -25,7 +24,6 @@ class StepController:
         self.steppable = steppable
         self.mode = mode
         self._paused = False
-        self._lock = asyncio.Lock()
         self._step_request = False
         self._num_steps = 0
 
@@ -35,25 +33,22 @@ class StepController:
 
     async def set_paused(self, paused: bool) -> None:
         """Pause or unpause the simulation."""
-        async with self._lock:
-            self._paused = paused
+        self._paused = paused
 
     async def request_steps(self, num_steps: int = 1) -> None:
         """Request a number of steps to be taken."""
-        async with self._lock:
-            self._step_request = True
-            self._num_steps = num_steps
+        self._step_request = True
+        self._num_steps = num_steps
 
     async def should_step(self) -> bool:
         """Check if a step should be taken."""
-        async with self._lock:
-            if self.mode == StepMode.CONTINUOUS:
-                return not self._paused
+        if self.mode == StepMode.CONTINUOUS:
+            return not self._paused
 
-            if self._step_request and self._num_steps > 0:
-                self._num_steps -= 1
-                if self._num_steps == 0:
-                    self._step_request = False
-                return True
+        if self._step_request and self._num_steps > 0:
+            self._num_steps -= 1
+            if self._num_steps == 0:
+                self._step_request = False
+            return True
 
-            return False
+        return False

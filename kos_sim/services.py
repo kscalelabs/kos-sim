@@ -155,21 +155,19 @@ class ActuatorService(actuator_pb2_grpc.ActuatorServiceServicer):
         ids = request.actuator_ids or list(self.simulator._joint_id_to_name.keys())
         try:
             states = {
-                joint_id: (
-                    await self.simulator.get_actuator_state(joint_id),
-                    await self.simulator.get_actuator_velocity(joint_id),
-                )
+                joint_id: await self.simulator.get_actuator_state(joint_id)
                 for joint_id in ids
             }
             return actuator_pb2.GetActuatorsStateResponse(
                 states=[
                     actuator_pb2.ActuatorStateResponse(
                         actuator_id=joint_id,
-                        position=math.degrees(float(state)),
-                        velocity=math.degrees(float(velocity)),
+                        position=math.degrees(state.position),
+                        velocity=math.degrees(state.velocity),
+                        torque=state.effort,
                         online=True,
                     )
-                    for joint_id, (state, velocity) in states.items()
+                    for joint_id, state in states.items()
                 ]
             )
         except Exception as e:
