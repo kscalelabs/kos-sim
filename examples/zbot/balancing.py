@@ -78,7 +78,7 @@ async def test_client(host: str = "localhost", port: int = 50051) -> None:
 
             # Make the hips move in the opposite direction of gravity.
             scale = gravity_direction[0]
-            delta = scale * -0.01
+            delta = scale * -1.0
 
             logger.info("Delta: %f", delta)
             if next_time > current_time:
