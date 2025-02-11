@@ -56,21 +56,24 @@ async def test_client(host: str = "localhost", port: int = 50051) -> None:
         while True:
             current_time = time.time()
 
-            _, raw_quat = await asyncio.gather(
-                kos.actuator.command_actuators(
-                    [
-                        # Right leg.
-                        {"actuator_id": 43, "position": 40.0 + delta / 2},  # right_hip_pitch
-                        {"actuator_id": 44, "position": -65.0 + delta},  # right_knee
-                        {"actuator_id": 45, "position": -30.0 - delta / 2},  # right_ankle
-                        # Left leg.
-                        {"actuator_id": 33, "position": -40.0 - delta / 2},  # left_hip_pitch
-                        {"actuator_id": 34, "position": 65.0 - delta},  # left_knee
-                        {"actuator_id": 35, "position": 30.0 + delta / 2},  # left_ankle
-                    ]
-                ),
+            targets = {
+                43: 40.0 + delta / 2,  # right_hip_pitch
+                44: -65.0 + delta,  # right_knee
+                45: -30.0 - delta / 2,  # right_ankle
+                33: -40.0 - delta / 2,  # left_hip_pitch
+                34: 65.0 - delta,  # left_knee
+                35: 30.0 + delta / 2,  # left_ankle
+            }
+
+            _, states, raw_quat = await asyncio.gather(
+                kos.actuator.command_actuators([{"actuator_id": i, "position": k} for i, k in targets.items()]),
+                kos.actuator.get_actuators_state(),
                 kos.imu.get_quaternion(),
             )
+
+            for state in states.states:
+                if state.actuator_id in targets:
+                    logger.info("Current: %s Target: %f", state.position, targets[state.actuator_id])
 
             # Gets the direction of gravity. The Z-axis is up.
             quat = R.from_quat([raw_quat.x, raw_quat.y, raw_quat.z, raw_quat.w])
