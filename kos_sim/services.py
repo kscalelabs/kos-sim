@@ -147,22 +147,29 @@ class ActuatorService(actuator_pb2_grpc.ActuatorServiceServicer):
 
     async def GetActuatorsState(  # noqa: N802
         self,
-        request: empty_pb2.Empty,
+        request: actuator_pb2.GetActuatorsStateRequest,
         context: grpc.ServicerContext,
     ) -> actuator_pb2.GetActuatorsStateResponse:
         """Implements GetActuatorsState by reading from simulator."""
         logger.info("GetActuatorsState request received")
+        ids = request.actuator_ids or list(self.simulator._joint_id_to_name.keys())
         try:
             states = {
-                joint_id: await self.simulator.get_actuator_state(joint_id)
-                for joint_id in self.simulator._joint_id_to_name.keys()
+                joint_id: (
+                    await self.simulator.get_actuator_state(joint_id),
+                    await self.simulator.get_actuator_velocity(joint_id),
+                )
+                for joint_id in ids
             }
             return actuator_pb2.GetActuatorsStateResponse(
                 states=[
                     actuator_pb2.ActuatorStateResponse(
-                        actuator_id=joint_id, position=math.degrees(float(state)), online=True
+                        actuator_id=joint_id,
+                        position=math.degrees(float(state)),
+                        velocity=math.degrees(float(velocity)),
+                        online=True,
                     )
-                    for joint_id, state in states.items()
+                    for joint_id, (state, velocity) in states.items()
                 ]
             )
         except Exception as e:
@@ -246,7 +253,7 @@ class IMUService(imu_pb2_grpc.IMUServiceServicer):
     ) -> imu_pb2.QuaternionResponse:
         """Implements GetQuaternion by reading orientation data from simulator."""
         try:
-            quat_data = await self.simulator.get_sensor_data("base_link_quat")
+            quat_data = await self.simulator.get_sensor_data(self.quat_name)
             return imu_pb2.QuaternionResponse(
                 w=float(quat_data[0]), x=float(quat_data[1]), y=float(quat_data[2]), z=float(quat_data[3])
             )
@@ -261,8 +268,9 @@ class IMUService(imu_pb2_grpc.IMUServiceServicer):
         context: grpc.ServicerContext,
     ) -> imu_pb2.EulerAnglesResponse:
         """Implements GetEuler by converting orientation quaternion to Euler angles."""
+        logger.info("GetEuler request received")
         try:
-            quat_data = await self.simulator.get_sensor_data("base_link_quat")
+            quat_data = await self.simulator.get_sensor_data(self.quat_name)
             # Extract quaternion components
             w, x, y, z = [float(q) for q in quat_data]
 

@@ -177,12 +177,19 @@ class MujocoSimulator:
                 raise KeyError(f"Joint ID {joint_id} not found in config mappings")
 
             joint_name = self._joint_id_to_name[joint_id]
-            actuator_name = f"{joint_name}_ctrl"
-            if actuator_name not in self._actuator_name_to_id:
-                raise KeyError(f"Joint {joint_name} not found in MuJoCo model")
 
-            actuator_id = self._actuator_name_to_id[actuator_name]
-        return float(self._data.qpos[actuator_id])
+        return float(self._data.joint(joint_name).qpos)
+
+    async def get_actuator_velocity(self, joint_id: int) -> float:
+        """Get current velocity of an actuator using real joint ID."""
+        logger.debug("Getting actuator velocity for joint ID: %s", joint_id)
+        async with self._lock:
+            if joint_id not in self._joint_id_to_name:
+                raise KeyError(f"Joint ID {joint_id} not found in config mappings")
+
+            joint_name = self._joint_id_to_name[joint_id]
+
+        return float(self._data.joint(joint_name).qvel)
 
     async def command_actuators(self, commands: dict[int, float]) -> None:
         """Command multiple actuators at once using real joint IDs."""
