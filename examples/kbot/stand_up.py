@@ -47,84 +47,98 @@ ACTUATOR_LIST: list[Actuator] = [
 
 async def stand_up(kos: KOS) -> None:
     """Execute stand-up sequence from prone position."""
-    # Phase 1: Push up with arms
+    # Phase 1: Push up with arms and prepare legs
     logger.info("Phase 1: Pushing up with arms")
     await kos.actuator.command_actuators(
         [
-            # Arms push down
-            {"actuator_id": 11, "position": -90.0},  # left shoulder pitch
-            {"actuator_id": 14, "position": -90.0},  # left elbow
-            {"actuator_id": 21, "position": -90.0},  # right shoulder pitch
-            {"actuator_id": 24, "position": -90.0},  # right elbow
-            # Tuck knees under
-            {"actuator_id": 34, "position": 120.0},  # left knee
-            {"actuator_id": 44, "position": 120.0},  # right knee
+            # Arms push down strongly
+            {"actuator_id": 11, "position": -120.0},  # left shoulder pitch
+            {"actuator_id": 14, "position": -130.0},  # left elbow
+            {"actuator_id": 21, "position": -120.0},  # right shoulder pitch
+            {"actuator_id": 24, "position": -130.0},  # right elbow
+            # Tuck knees under body
+            {"actuator_id": 31, "position": 45.0},  # left hip pitch
+            {"actuator_id": 34, "position": 130.0},  # left knee
+            {"actuator_id": 41, "position": 45.0},  # right hip pitch
+            {"actuator_id": 44, "position": 130.0},  # right knee
+            # Position ankles
+            {"actuator_id": 35, "position": -60.0},  # left ankle
+            {"actuator_id": 45, "position": -60.0},  # right ankle
         ]
     )
-    await asyncio.sleep(1.0)
+    await asyncio.sleep(1.5)  # Give more time for initial push
 
-    # Phase 2: Shift weight back and tuck legs
+    # Phase 2: Shift weight back onto legs
     logger.info("Phase 2: Shifting weight back")
     await kos.actuator.command_actuators(
         [
-            # Arms maintain push
-            {"actuator_id": 11, "position": -100.0},  # left shoulder pitch
-            {"actuator_id": 14, "position": -90.0},  # left elbow
-            {"actuator_id": 21, "position": -100.0},  # right shoulder pitch
-            {"actuator_id": 24, "position": -90.0},  # right elbow
-            # Hips and knees position for squat
-            {"actuator_id": 31, "position": 90.0},  # left hip pitch
-            {"actuator_id": 34, "position": 130.0},  # left knee
-            {"actuator_id": 41, "position": 90.0},  # right hip pitch
-            {"actuator_id": 44, "position": 130.0},  # right knee
-            # Ankles prepare for standing
-            {"actuator_id": 35, "position": -45.0},  # left ankle
-            {"actuator_id": 45, "position": -45.0},  # right ankle
+            # Adjust arms to allow weight shift
+            {"actuator_id": 11, "position": -90.0},  # left shoulder pitch
+            {"actuator_id": 14, "position": -100.0},  # left elbow
+            {"actuator_id": 21, "position": -90.0},  # right shoulder pitch
+            {"actuator_id": 24, "position": -100.0},  # right elbow
+            # Shift hips back and up
+            {"actuator_id": 31, "position": 100.0},  # left hip pitch
+            {"actuator_id": 34, "position": 140.0},  # left knee
+            {"actuator_id": 41, "position": 100.0},  # right hip pitch
+            {"actuator_id": 44, "position": 140.0},  # right knee
+            # Adjust ankles for balance
+            {"actuator_id": 35, "position": -70.0},  # left ankle
+            {"actuator_id": 45, "position": -70.0},  # right ankle
+            # Stabilize with hip roll
+            {"actuator_id": 32, "position": -10.0},  # left hip roll
+            {"actuator_id": 42, "position": 10.0},  # right hip roll
         ]
     )
-    await asyncio.sleep(1.0)
+    await asyncio.sleep(1.5)
 
-    # Phase 3: Squat position
+    # Phase 3: Deep squat position
     logger.info("Phase 3: Moving to squat position")
     await kos.actuator.command_actuators(
         [
-            # Arms support from front
-            {"actuator_id": 11, "position": -45.0},  # left shoulder pitch
-            {"actuator_id": 14, "position": -90.0},  # left elbow
-            {"actuator_id": 21, "position": -45.0},  # right shoulder pitch
-            {"actuator_id": 24, "position": -90.0},  # right elbow
+            # Move arms forward for balance
+            {"actuator_id": 11, "position": -30.0},  # left shoulder pitch
+            {"actuator_id": 14, "position": -45.0},  # left elbow
+            {"actuator_id": 21, "position": -30.0},  # right shoulder pitch
+            {"actuator_id": 24, "position": -45.0},  # right elbow
             # Deep squat position
-            {"actuator_id": 31, "position": 100.0},  # left hip pitch
-            {"actuator_id": 34, "position": 120.0},  # left knee
-            {"actuator_id": 41, "position": 100.0},  # right hip pitch
-            {"actuator_id": 44, "position": 120.0},  # right knee
-            # Ankles provide stability
-            {"actuator_id": 35, "position": -30.0},  # left ankle
-            {"actuator_id": 45, "position": -30.0},  # right ankle
+            {"actuator_id": 31, "position": 110.0},  # left hip pitch
+            {"actuator_id": 34, "position": 130.0},  # left knee
+            {"actuator_id": 41, "position": 110.0},  # right hip pitch
+            {"actuator_id": 44, "position": 130.0},  # right knee
+            # Adjust ankles for stability
+            {"actuator_id": 35, "position": -50.0},  # left ankle
+            {"actuator_id": 45, "position": -50.0},  # right ankle
+            # Maintain hip roll for stability
+            {"actuator_id": 32, "position": -5.0},  # left hip roll
+            {"actuator_id": 42, "position": 5.0},  # right hip roll
         ]
     )
     await asyncio.sleep(1.0)
 
-    # Phase 4: Stand up
+    # Phase 4: Stand up gradually
     logger.info("Phase 4: Standing up")
     await kos.actuator.command_actuators(
         [
-            # Arms at sides
-            {"actuator_id": 11, "position": 0.0},  # left shoulder pitch
-            {"actuator_id": 14, "position": 0.0},  # left elbow
-            {"actuator_id": 21, "position": 0.0},  # right shoulder pitch
-            {"actuator_id": 24, "position": 0.0},  # right elbow
-            # Legs straighten
-            {"actuator_id": 31, "position": 20.0},  # left hip pitch
-            {"actuator_id": 34, "position": 40.0},  # left knee
-            {"actuator_id": 41, "position": 20.0},  # right hip pitch
-            {"actuator_id": 44, "position": 40.0},  # right knee
-            # Ankles provide balance
-            {"actuator_id": 35, "position": -20.0},  # left ankle
-            {"actuator_id": 45, "position": -20.0},  # right ankle
+            # Arms slightly forward for balance
+            {"actuator_id": 11, "position": -10.0},  # left shoulder pitch
+            {"actuator_id": 14, "position": -5.0},  # left elbow
+            {"actuator_id": 21, "position": -10.0},  # right shoulder pitch
+            {"actuator_id": 24, "position": -5.0},  # right elbow
+            # Straighten legs gradually
+            {"actuator_id": 31, "position": 15.0},  # left hip pitch
+            {"actuator_id": 34, "position": 25.0},  # left knee
+            {"actuator_id": 41, "position": 15.0},  # right hip pitch
+            {"actuator_id": 44, "position": 25.0},  # right knee
+            # Ankles for balance
+            {"actuator_id": 35, "position": -15.0},  # left ankle
+            {"actuator_id": 45, "position": -15.0},  # right ankle
+            # Reset hip roll
+            {"actuator_id": 32, "position": 0.0},  # left hip roll
+            {"actuator_id": 42, "position": 0.0},  # right hip roll
         ]
     )
-    await asyncio.sleep(1.0)
+    await asyncio.sleep(1.5)
 
 
 async def test_client(host: str = "localhost", port: int = 50051) -> None:
