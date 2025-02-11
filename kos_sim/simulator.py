@@ -126,13 +126,12 @@ class MujocoSimulator:
             joint_id: self._actuator_name_to_id[f"{name}_ctrl"] for joint_id, name in self._joint_id_to_name.items()
         }
 
-        # Add control parameters (removed lock)
+        # Add control parameters
         self._sim_time = 0.0
         self._current_commands: dict[str, tuple[float, float]] = {}
 
     async def step(self) -> None:
         """Execute one step of the simulation."""
-        # Removed lock context
         self._sim_time += self._dt
 
         # Process commands that are ready to be applied
@@ -212,7 +211,6 @@ class MujocoSimulator:
 
     async def configure_actuator(self, joint_id: int, configuration: ConfigureActuatorRequest) -> None:
         """Configure an actuator using real joint ID."""
-        # Removed lock context
         if joint_id not in self._joint_id_to_actuator_id:
             raise KeyError(
                 f"Joint ID {joint_id} not found in config mappings. "
