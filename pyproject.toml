@@ -69,3 +69,13 @@ combine-as-imports = true
 [tool.ruff.lint.pydocstyle]
 
 convention = "google"
+
+[tool.pixi.project]
+name = "kos-sim"
+channels = ["conda-forge"]
+platforms = ["osx-arm64"]
+
+[tool.pixi.pypi-dependencies]
+kos-sim = { path = ".", editable = true }
+
+[tool.pixi.tasks]

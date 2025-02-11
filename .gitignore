@@ -24,3 +24,7 @@ MUJOCO_LOG.TXT
 # dev
 ref/
 .kos-sim/
+
+# pixi environments
+.pixi
+*.egg-info
