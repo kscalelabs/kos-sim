@@ -1,6 +1,5 @@
 """Wrapper around MuJoCo simulation."""
 
-import asyncio
 from dataclasses import dataclass
 from pathlib import Path
 from typing import NotRequired, TypedDict, TypeVar
