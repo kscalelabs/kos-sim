@@ -1,12 +1,15 @@
-"""Interactive example of the K-Bot simulation."""
+"""Interactive example script for a command to keep the robot balanced."""
 
 import argparse
 import asyncio
 import logging
+import time
 from dataclasses import dataclass
 
 import colorlogging
+import numpy as np
 from pykos import KOS
+from scipy.spatial.transform import Rotation as R
 
 logger = logging.getLogger(__name__)
 
@@ -61,74 +64,43 @@ async def test_client(host: str = "localhost", port: int = 50051) -> None:
                 torque_enabled=True,
             )
 
-        await kos.actuator.command_actuators(
-            [
-                {
-                    "actuator_id": actuator.actuator_id,
-                    "position": 0.0,
-                }
-                for actuator in ACTUATOR_LIST
-            ]
-        )
+        start_time = time.time()
+        next_time = start_time + 1 / 50
+        delta = 0.0
 
-        # logger.info("Starting control loop...")
-        # start_time = time.time()
-        # next_time = start_time + 1 / 50
+        while True:
+            current_time = time.time()
 
-        # while True:
-        #     current_time = time.time()
-        #     position = 30.0 * math.sin(2 * math.pi * (current_time - start_time) / 2.0)
+            _, raw_quat = await asyncio.gather(
+                kos.actuator.command_actuators(
+                    [
+                        # Right leg.
+                        {"actuator_id": 41, "position": -40.0 - delta},  # right_hip_pitch_04
+                        {"actuator_id": 44, "position": -65.0 + delta},  # right_knee_04
+                        {"actuator_id": 45, "position": 30.0},  # right_ankle_02
+                        # Left leg.
+                        {"actuator_id": 31, "position": 40.0 + delta},  # left_hip_pitch_04
+                        {"actuator_id": 34, "position": 65.0 - delta},  # left_knee_04
+                        {"actuator_id": 35, "position": -30.0},  # left_ankle_02
+                    ]
+                ),
+                kos.imu.get_quaternion(),
+            )
 
-        #     # Send commands to all actuator.
-        #     logger.debug("Sending commands to all actuators")
-        #     await kos.actuator.command_actuators(
-        #         [
-        #             {
-        #                 "actuator_id": actuator.actuator_id,
-        #                 "position": position,
-        #             }
-        #             for actuator in ACTUATOR_LIST
-        #         ]
-        #     )
+            # Gets the direction of gravity. The Z-axis is up.
+            quat = R.from_quat([raw_quat.x, raw_quat.y, raw_quat.z, raw_quat.w])
+            gravity_direction = quat.apply(np.array([0, 0, -1]))
 
-        #     # Run at 50Hz
-        #     if current_time < next_time:
-        #         logger.debug("Sleeping for %f seconds", next_time - current_time)
-        #         await asyncio.sleep(next_time - current_time)
-        #     next_time += 1 / 50
+            # Make the hips move in the opposite direction of gravity.
+            scale = gravity_direction[0]
+            delta = scale * -100.0
 
-        await kos.actuator.command_actuators(
-            [
-                # Right leg.
-                {
-                    "actuator_id": 41,  # right_hip_pitch_04
-                    "position": 30.0,
-                },
-                {
-                    "actuator_id": 44,  # right_knee_04
-                    "position": -40.0,
-                },
-                {
-                    "actuator_id": 45,  # right_ankle_02
-                    "position": -30.0,
-                },
-                # Left leg.
-                {
-                    "actuator_id": 31,  # left_hip_pitch_04
-                    "position": -30.0,
-                },
-                {
-                    "actuator_id": 34,  # left_knee_04
-                    "position": 40.0,
-                },
-                {
-                    "actuator_id": 35,  # left_ankle_02
-                    "position": 30.0,
-                },
-            ]
-        )
+            logger.info("Delta: %f", delta)
 
-        await asyncio.sleep(10.0)
+            if next_time > current_time:
+                logger.info("Sleeping for %f seconds", next_time - current_time)
+                await asyncio.sleep(next_time - current_time)
+            next_time += 1 / 50
 
 
 async def main() -> None:

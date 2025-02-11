@@ -193,9 +193,21 @@ class ActuatorService(actuator_pb2_grpc.ActuatorServiceServicer):
 class IMUService(imu_pb2_grpc.IMUServiceServicer):
     """Implementation of IMUService that wraps a MuJoCo simulation."""
 
-    def __init__(self, simulator: MujocoSimulator, step_controller: StepController) -> None:
+    def __init__(
+        self,
+        simulator: MujocoSimulator,
+        step_controller: StepController,
+        acc_name: str | None = "imu_acc",
+        gyro_name: str | None = "imu_gyro",
+        mag_name: str | None = "imu_mag",
+        quat_name: str | None = "base_link_quat",
+    ) -> None:
         self.simulator = simulator
         self.step_controller = step_controller
+        self.acc_name = acc_name
+        self.gyro_name = gyro_name
+        self.mag_name = mag_name
+        self.quat_name = quat_name
 
     async def GetValues(  # noqa: N802
         self,
@@ -204,10 +216,21 @@ class IMUService(imu_pb2_grpc.IMUServiceServicer):
     ) -> imu_pb2.IMUValuesResponse:
         """Implements GetValues by reading IMU sensor data from simulator."""
         try:
-            imu_data = await self.simulator.get_sensor_data("imu")
+            if self.acc_name is None or self.gyro_name is None:
+                raise ValueError("Accelerometer or gyroscope name not set")
+            acc_data = await self.simulator.get_sensor_data(self.acc_name)
+            gyro_data = await self.simulator.get_sensor_data(self.gyro_name)
+            mag_data = None if self.mag_name is None else await self.simulator.get_sensor_data(self.mag_name)
             return imu_pb2.IMUValuesResponse(
-                accelerometer=imu_pb2.Vector3(x=float(imu_data[0]), y=float(imu_data[1]), z=float(imu_data[2])),
-                gyroscope=imu_pb2.Vector3(x=float(imu_data[3]), y=float(imu_data[4]), z=float(imu_data[5])),
+                accel_x=float(acc_data[0]),
+                accel_y=float(acc_data[1]),
+                accel_z=float(acc_data[2]),
+                gyro_x=float(gyro_data[0]),
+                gyro_y=float(gyro_data[1]),
+                gyro_z=float(gyro_data[2]),
+                mag_x=None if mag_data is None else float(mag_data[0]),
+                mag_y=None if mag_data is None else float(mag_data[1]),
+                mag_z=None if mag_data is None else float(mag_data[2]),
             )
         except Exception as e:
             context.set_code(grpc.StatusCode.INTERNAL)

@@ -127,28 +127,17 @@ class MujocoSimulator:
         self._lock = asyncio.Lock()
         self._current_commands: dict[str, float] = {}
 
-        self._count_lowlevel = 0
-        self._target_positions: dict[str, float] = {}  # Store target positions between updates
-
-        self.pd_counter = 0
-
     async def step(self) -> None:
         """Execute one step of the simulation."""
         async with self._lock:
-            # Only update commands every sim_decimation steps
-            if self._count_lowlevel % self._sim_decimation == 0:
-                self._target_positions = self._current_commands.copy()
-
-            # Apply position control commands directly to actuators
-            for name, target_pos in self._target_positions.items():
+            for name, target_pos in self._current_commands.items():
                 actuator_id = self._actuator_name_to_id[name]
+                logger.debug("Setting actuator %s (id %d) to %f", name, actuator_id, target_pos)
                 self._data.ctrl[actuator_id] = target_pos
+            self._current_commands.clear()
 
         # Step physics - allow other coroutines to run during computation
-        await asyncio.get_event_loop().run_in_executor(None, mujoco.mj_step, self._model, self._data)
-
-        # Increment counter
-        self._count_lowlevel += 1
+        mujoco.mj_step(self._model, self._data)
 
         if self._suspended:
             # Find the root joint (floating_base)
@@ -216,17 +205,27 @@ class MujocoSimulator:
             actuator_id = self._joint_id_to_actuator_id[joint_id]
 
             if "kp" in configuration:
-                self._model.actuator_gainprm[actuator_id, 0] = -configuration["kp"]
-                logger.info("Set kp for actuator %s to %f", joint_id, configuration["kp"])
+                prev_kp = float(self._model.actuator_gainprm[actuator_id, 0])
+                self._model.actuator_gainprm[actuator_id, 0] = configuration["kp"]
+                logger.debug("Set kp for actuator %s from %f to %f", joint_id, prev_kp, configuration["kp"])
 
             if "kd" in configuration:
+                prev_kd = -float(self._model.actuator_biasprm[actuator_id, 2])
                 self._model.actuator_biasprm[actuator_id, 2] = -configuration["kd"]
-                logger.info("Set kd for actuator %s to %f", joint_id, configuration["kd"])
+                logger.debug("Set kd for actuator %s from %f to %f", joint_id, prev_kd, configuration["kd"])
 
             if "max_torque" in configuration:
+                prev_min_torque = float(self._model.actuator_forcerange[actuator_id, 0])
+                prev_max_torque = float(self._model.actuator_forcerange[actuator_id, 1])
                 self._model.actuator_forcerange[actuator_id, 0] = -configuration["max_torque"]
                 self._model.actuator_forcerange[actuator_id, 1] = configuration["max_torque"]
-                logger.info("Set max_torque for actuator %s to +/- %f", joint_id, configuration["max_torque"])
+                logger.debug(
+                    "Set max_torque for actuator %s from (%f, %f) to +/- %f",
+                    joint_id,
+                    prev_min_torque,
+                    prev_max_torque,
+                    configuration["max_torque"],
+                )
 
     async def reset(self, qpos: list[float] | None = None) -> None:
         """Reset simulation to specified or default state."""

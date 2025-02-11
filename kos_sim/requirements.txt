@@ -7,3 +7,4 @@ mujoco-python-viewer
 numpy
 omegaconf
 pykos
+scipy
