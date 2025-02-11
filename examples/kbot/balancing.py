@@ -75,13 +75,13 @@ async def test_client(host: str = "localhost", port: int = 50051) -> None:
                 kos.actuator.command_actuators(
                     [
                         # Right leg.
-                        {"actuator_id": 41, "position": -40.0 - delta},  # right_hip_pitch_04
+                        {"actuator_id": 41, "position": -40.0 - delta / 2},  # right_hip_pitch_04
                         {"actuator_id": 44, "position": -65.0 + delta},  # right_knee_04
-                        {"actuator_id": 45, "position": 30.0},  # right_ankle_02
+                        {"actuator_id": 45, "position": 30.0 + delta / 2},  # right_ankle_02
                         # Left leg.
-                        {"actuator_id": 31, "position": 40.0 + delta},  # left_hip_pitch_04
+                        {"actuator_id": 31, "position": 40.0 + delta / 2},  # left_hip_pitch_04
                         {"actuator_id": 34, "position": 65.0 - delta},  # left_knee_04
-                        {"actuator_id": 35, "position": -30.0},  # left_ankle_02
+                        {"actuator_id": 35, "position": -30.0 - delta / 2},  # left_ankle_02
                     ]
                 ),
                 kos.imu.get_quaternion(),
@@ -116,5 +116,5 @@ async def main() -> None:
 
 
 if __name__ == "__main__":
-    # python -m examples.kbot
+    # python -m examples.kbot.balancing
     asyncio.run(main())
