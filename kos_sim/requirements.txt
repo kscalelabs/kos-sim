@@ -7,8 +7,3 @@ mujoco-python-viewer
 numpy
 omegaconf
 pykos
-
-# For examples
-
-scipy
-kinfer==0.0.5

@@ -14,8 +14,18 @@ with open("kos_sim/requirements.txt", "r", encoding="utf-8") as f:
     requirements: list[str] = f.read().splitlines()
 
 
-with open("kos_sim/requirements-dev.txt", "r", encoding="utf-8") as f:
-    requirements_dev: list[str] = f.read().splitlines()
+requirements_dev = [
+    "black",
+    "darglint",
+    "mypy",
+    "pytest",
+    "ruff",
+]
+
+requirements_examples = [
+    "scipy",
+    "kinfer==0.0.5",
+]
 
 
 with open("kos_sim/__init__.py", "r", encoding="utf-8") as fh:
@@ -35,7 +45,10 @@ setup(
     python_requires=">=3.11",
     install_requires=requirements,
     tests_require=requirements_dev,
-    extras_require={"dev": requirements_dev},
+    extras_require={
+        "dev": requirements_dev,
+        "examples": requirements_examples,
+    },
     packages=["kos_sim"],
     entry_points={
         "console_scripts": [
