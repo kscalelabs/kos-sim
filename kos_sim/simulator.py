@@ -70,6 +70,8 @@ class MujocoSimulator:
         if len(self._joint_name_to_id) != len(self._joint_id_to_name):
             raise ValueError("Joint IDs are not unique!")
 
+        logger.info("Joint ID to name: %s", self._joint_id_to_name)
+
         # Load MuJoCo model and initialize data
         logger.info("Loading model from %s", model_path)
         self._model = mujoco.MjModel.from_xml_path(str(model_path))
@@ -164,6 +166,7 @@ class MujocoSimulator:
 
     async def get_actuator_state(self, joint_id: int) -> float:
         """Get current state of an actuator using real joint ID."""
+        logger.debug("Getting actuator state for joint ID: %s", joint_id)
         async with self._lock:
             if joint_id not in self._joint_id_to_name:
                 raise KeyError(f"Joint ID {joint_id} not found in config mappings")
@@ -173,7 +176,7 @@ class MujocoSimulator:
             if actuator_name not in self._actuator_name_to_id:
                 raise KeyError(f"Joint {joint_name} not found in MuJoCo model")
 
-            actuator_id = self._actuator_name_to_id[joint_name]
+            actuator_id = self._actuator_name_to_id[actuator_name]
         return float(self._data.qpos[actuator_id])
 
     async def command_actuators(self, commands: dict[int, float]) -> None:

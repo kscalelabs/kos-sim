@@ -151,6 +151,7 @@ class ActuatorService(actuator_pb2_grpc.ActuatorServiceServicer):
         context: grpc.ServicerContext,
     ) -> actuator_pb2.GetActuatorsStateResponse:
         """Implements GetActuatorsState by reading from simulator."""
+        logger.info("GetActuatorsState request received")
         try:
             states = {
                 joint_id: await self.simulator.get_actuator_state(joint_id)
@@ -165,6 +166,7 @@ class ActuatorService(actuator_pb2_grpc.ActuatorServiceServicer):
                 ]
             )
         except Exception as e:
+            logger.error("GetActuatorsState failed: %s", e)
             context.set_code(grpc.StatusCode.INTERNAL)
             context.set_details(str(e))
             return actuator_pb2.GetActuatorsStateResponse()
