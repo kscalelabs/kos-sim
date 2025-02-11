@@ -33,6 +33,9 @@ class SimulationServer:
         gravity: bool = True,
         render: bool = True,
         suspended: bool = False,
+        command_delay_min: float = 0.0,
+        command_delay_max: float = 0.0,
+        sleep_time: float = 0.0001,
     ) -> None:
         self.simulator = MujocoSimulator(
             model_path=model_path,
@@ -41,10 +44,13 @@ class SimulationServer:
             gravity=gravity,
             render=render,
             suspended=suspended,
+            command_delay_min=command_delay_min,
+            command_delay_max=command_delay_max,
         )
         self.step_controller = StepController(self.simulator, mode=step_mode)
         self.host = host
         self.port = port
+        self._sleep_time = sleep_time
         self._stop_event = asyncio.Event()
         self._server = None
 
@@ -78,16 +84,25 @@ class SimulationServer:
             while not self._stop_event.is_set():
                 current_time = time.time()
                 sim_time = current_time - last_update
-                last_update = current_time
 
                 if await self.step_controller.should_step():
+                    steps = 0
                     while sim_time > 0:
                         await self.simulator.step()
                         sim_time -= self.simulator.timestep
+                        steps += 1
+                    logger.debug(
+                        "Ran %d simulation steps (sim_time: %.3f, timestep: %.3f)",
+                        steps,
+                        current_time - last_update,
+                        self.simulator.timestep,
+                    )
+                    last_update = current_time
+
                 await self.simulator.render()
 
                 # Add a small sleep to prevent the loop from consuming too much CPU.
-                await asyncio.sleep(0.001)
+                await asyncio.sleep(self._sleep_time)
 
         except Exception as e:
             logger.error("Simulation loop failed: %s", e)
@@ -136,6 +151,8 @@ async def serve(
     gravity: bool = True,
     render: bool = True,
     suspended: bool = False,
+    command_delay_min: float = 0.0,
+    command_delay_max: float = 0.0,
 ) -> None:
     async with K() as api:
         model_dir, model_metadata = await asyncio.gather(
@@ -154,6 +171,8 @@ async def serve(
         gravity=gravity,
         render=render,
         suspended=suspended,
+        command_delay_min=command_delay_min,
+        command_delay_max=command_delay_max,
     )
     await server.start()
 
@@ -167,6 +186,8 @@ async def run_server() -> None:
     parser.add_argument("--no-gravity", action="store_true", help="Disable gravity")
     parser.add_argument("--no-render", action="store_true", help="Disable rendering")
     parser.add_argument("--suspended", action="store_true", help="Suspended simulation")
+    parser.add_argument("--command-delay-min", type=float, default=0.0, help="Minimum command delay")
+    parser.add_argument("--command-delay-max", type=float, default=0.0, help="Maximum command delay")
     parser.add_argument("--debug", action="store_true", help="Enable debug logging")
     args = parser.parse_args()
 
@@ -179,6 +200,8 @@ async def run_server() -> None:
     gravity = not args.no_gravity
     render = not args.no_render
     suspended = args.suspended
+    command_delay_min = args.command_delay_min
+    command_delay_max = args.command_delay_max
 
     logger.info("Model name: %s", model_name)
     logger.info("Port: %d", port)
@@ -186,6 +209,8 @@ async def run_server() -> None:
     logger.info("Gravity: %s", gravity)
     logger.info("Render: %s", render)
     logger.info("Suspended: %s", suspended)
+    logger.info("Command delay min: %f", command_delay_min)
+    logger.info("Command delay max: %f", command_delay_max)
 
     await serve(
         model_name=model_name,
@@ -195,6 +220,8 @@ async def run_server() -> None:
         gravity=gravity,
         render=render,
         suspended=suspended,
+        command_delay_min=command_delay_min,
+        command_delay_max=command_delay_max,
     )
 
 

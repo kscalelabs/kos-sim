@@ -1,7 +1,6 @@
 """Wrapper around MuJoCo simulation."""
 
 import asyncio
-from dataclasses import dataclass, field
 from pathlib import Path
 from typing import NotRequired, TypedDict, TypeVar
 
@@ -29,15 +28,6 @@ class ConfigureActuatorRequest(TypedDict):
     max_torque: NotRequired[float]
 
 
-@dataclass
-class SimulationConfig:
-    dt: float = field(default=0.001)
-    sim_decimation: int = field(default=1)
-    gravity: bool = field(default=True)
-    render: bool = field(default=True)
-    suspended: bool = field(default=False)
-
-
 class MujocoSimulator:
     def __init__(
         self,
@@ -47,6 +37,8 @@ class MujocoSimulator:
         gravity: bool = True,
         render: bool = True,
         suspended: bool = False,
+        command_delay_min: float = 0.0,
+        command_delay_max: float = 0.0,
     ) -> None:
         # Stores parameters.
         self._model_path = model_path
@@ -55,6 +47,8 @@ class MujocoSimulator:
         self._gravity = gravity
         self._render = render
         self._suspended = suspended
+        self._command_delay_min = command_delay_min
+        self._command_delay_max = command_delay_max
 
         # Gets the sim decimation.
         if (control_frequency := self._metadata.control_frequency) is None:
@@ -127,20 +121,31 @@ class MujocoSimulator:
 
         # Add control parameters
         self._lock = asyncio.Lock()
-        self._current_commands: dict[str, float] = {}
+        self._sim_time = 0.0
+        self._current_commands: dict[str, tuple[float, float]] = {}
 
     async def step(self) -> None:
         """Execute one step of the simulation."""
         async with self._lock:
-            for name, target_pos in self._current_commands.items():
-                actuator_id = self._actuator_name_to_id[name]
-                logger.debug("Setting actuator %s (id %d) to %f", name, actuator_id, target_pos)
-                self._data.ctrl[actuator_id] = target_pos
-            self._current_commands.clear()
+            self._sim_time += self._dt
+
+            # Process commands that are ready to be applied
+            commands_to_remove = []
+            for name, (target_pos, application_time) in self._current_commands.items():
+                if self._sim_time >= application_time:
+                    actuator_id = self._actuator_name_to_id[name]
+                    logger.debug("Setting actuator %s (id %d) to %f", name, actuator_id, target_pos)
+                    self._data.ctrl[actuator_id] = target_pos
+                    commands_to_remove.append(name)
+
+            # Remove processed commands
+            if commands_to_remove:
+                logger.debug("Removing %d commands at sim time %f", len(commands_to_remove), self._sim_time)
+                for name in commands_to_remove:
+                    self._current_commands.pop(name)
 
         # Step physics - allow other coroutines to run during computation
         mujoco.mj_step(self._model, self._data)
-
         if self._suspended:
             # Find the root joint (floating_base)
             for i in range(self._model.njnt):
@@ -194,8 +199,12 @@ class MujocoSimulator:
                     logger.warning("Joint %s not found in MuJoCo model", actuator_name)
                     continue
 
-                logger.debug("Setting actuator %s to %f", actuator_name, command)
-                self._current_commands[actuator_name] = command
+                # Calculate random delay and application time
+                delay = np.random.uniform(self._command_delay_min, self._command_delay_max)
+                application_time = self._sim_time + delay
+
+                logger.debug("Setting actuator %s to %f with delay %f s", actuator_name, command, delay)
+                self._current_commands[actuator_name] = (command, application_time)
 
     async def configure_actuator(self, joint_id: int, configuration: ConfigureActuatorRequest) -> None:
         """Configure an actuator using real joint ID."""
@@ -232,6 +241,9 @@ class MujocoSimulator:
 
     async def reset(self, qpos: list[float] | None = None) -> None:
         """Reset simulation to specified or default state."""
+        self._sim_time = 0.0
+        self._current_commands.clear()
+
         mujoco.mj_resetData(self._model, self._data)
         if qpos is not None:
             self._data.qpos[: len(qpos)] = qpos

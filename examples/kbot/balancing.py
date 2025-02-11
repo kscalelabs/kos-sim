@@ -96,7 +96,6 @@ async def test_client(host: str = "localhost", port: int = 50051) -> None:
             delta = scale * -100.0
 
             logger.info("Delta: %f", delta)
-
             if next_time > current_time:
                 logger.info("Sleeping for %f seconds", next_time - current_time)
                 await asyncio.sleep(next_time - current_time)
