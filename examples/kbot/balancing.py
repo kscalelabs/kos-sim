@@ -92,7 +92,7 @@ async def test_client(host: str = "localhost", port: int = 50051) -> None:
             gravity_direction = quat.apply(np.array([0, 0, -1]))
 
             # Make the hips move in the opposite direction of gravity.
-            scale = gravity_direction[0]
+            scale = (gravity_direction[0] - 0.1)
             delta = scale * -100.0
 
             logger.info("Delta: %f", delta)
