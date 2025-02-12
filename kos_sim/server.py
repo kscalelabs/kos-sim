@@ -2,6 +2,7 @@
 
 import argparse
 import asyncio
+import itertools
 import logging
 import time
 import traceback
@@ -160,7 +161,13 @@ async def serve(
             get_model_metadata(api, model_name),
         )
 
-    model_path = next(model_dir.glob("*.mjcf"))
+    model_path = next(
+        itertools.chain(
+            model_dir.glob("*.scene.mjcf"),
+            model_dir.glob("*.mjcf"),
+            model_dir.glob("*.xml"),
+        )
+    )
 
     server = SimulationServer(
         model_path,
