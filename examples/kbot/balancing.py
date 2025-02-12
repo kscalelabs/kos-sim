@@ -55,9 +55,9 @@ async def test_client(host: str = "localhost", port: int = 50051) -> None:
         for actuator in ACTUATOR_LIST:
             await kos.actuator.configure_actuator(
                 actuator_id=actuator.actuator_id,
-                kp=actuator.kp,
-                kd=actuator.kd,
-                max_torque=actuator.max_torque,
+                # kp=actuator.kp,
+                # kd=actuator.kd,
+                # max_torque=actuator.max_torque,
                 torque_enabled=True,
             )
 
@@ -75,13 +75,15 @@ async def test_client(host: str = "localhost", port: int = 50051) -> None:
                 kos.actuator.command_actuators(
                     [
                         # Right leg.
-                        {"actuator_id": 41, "position": -30.0 + delta / 2},  # right_hip_pitch_04
-                        {"actuator_id": 44, "position": -45.0 + delta},  # right_knee_04
-                        {"actuator_id": 45, "position": 20.0 + delta / 2},  # right_ankle_02
+                        {"actuator_id": 41, "position": -35.0 - delta / 2},  # right_hip_pitch_04
+                        {"actuator_id": 42, "position": 20.0},  # right_hip_roll_03
+                        {"actuator_id": 44, "position": -65.0 + delta},  # right_knee_04
+                        {"actuator_id": 45, "position": 30.0 + delta / 2},  # right_ankle_02
                         # Left leg.
-                        {"actuator_id": 31, "position": 30.0 - delta / 2},  # left_hip_pitch_04
-                        {"actuator_id": 34, "position": 45.0 - delta},  # left_knee_04
-                        {"actuator_id": 35, "position": -20.0 - delta / 2},  # left_ankle_02
+                        {"actuator_id": 31, "position": 35.0 + delta / 2},  # left_hip_pitch_04
+                        {"actuator_id": 32, "position": -20.0},  # left_hip_roll_03
+                        {"actuator_id": 34, "position": 65.0 - delta},  # left_knee_04
+                        {"actuator_id": 35, "position": -30.0 - delta / 2},  # left_ankle_02
                     ]
                 ),
                 kos.imu.get_quaternion(),
