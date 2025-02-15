@@ -51,16 +51,6 @@ async def test_client(host: str = "localhost", port: int = 50051) -> None:
     logger.info("Starting test client...")
 
     async with KOS(ip=host, port=port) as kos:
-        # Configure all actuators
-        for actuator in ACTUATOR_LIST:
-            await kos.actuator.configure_actuator(
-                actuator_id=actuator.actuator_id,
-                # kp=actuator.kp,
-                # kd=actuator.kd,
-                # max_torque=actuator.max_torque,
-                torque_enabled=True,
-            )
-
         # Reset the simulation.
         await kos.sim.reset()
 
@@ -74,16 +64,28 @@ async def test_client(host: str = "localhost", port: int = 50051) -> None:
             _, raw_quat = await asyncio.gather(
                 kos.actuator.command_actuators(
                     [
+                        # Left arm.
+                        {"actuator_id": 11, "position": 90.0},  # left_shoulder_pitch_03
+                        {"actuator_id": 12, "position": 0.0},  # left_shoulder_roll_03
+                        {"actuator_id": 13, "position": 0.0},  # left_shoulder_yaw_02
+                        {"actuator_id": 14, "position": 0.0},  # left_elbow_02
+                        {"actuator_id": 15, "position": 0.0},  # left_wrist_02
+                        # Right arm.
+                        {"actuator_id": 21, "position": -90.0},  # right_shoulder_pitch_03
+                        {"actuator_id": 22, "position": 0.0},  # right_shoulder_roll_03
+                        {"actuator_id": 23, "position": 0.0},  # right_shoulder_yaw_02
+                        {"actuator_id": 24, "position": 0.0},  # right_elbow_02
+                        {"actuator_id": 25, "position": 0.0},  # right_wrist_02
                         # Right leg.
-                        {"actuator_id": 41, "position": -35.0 - delta / 2},  # right_hip_pitch_04
+                        {"actuator_id": 41, "position": -45.0 - delta / 2},  # right_hip_pitch_04
                         {"actuator_id": 42, "position": 20.0},  # right_hip_roll_03
                         {"actuator_id": 44, "position": -65.0 + delta},  # right_knee_04
-                        {"actuator_id": 45, "position": 30.0 + delta / 2},  # right_ankle_02
+                        {"actuator_id": 45, "position": 50.0},  # right_ankle_02
                         # Left leg.
-                        {"actuator_id": 31, "position": 35.0 + delta / 2},  # left_hip_pitch_04
+                        {"actuator_id": 31, "position": 45.0 + delta / 2},  # left_hip_pitch_04
                         {"actuator_id": 32, "position": -20.0},  # left_hip_roll_03
                         {"actuator_id": 34, "position": 65.0 - delta},  # left_knee_04
-                        {"actuator_id": 35, "position": -30.0 - delta / 2},  # left_ankle_02
+                        {"actuator_id": 35, "position": -50.0},  # left_ankle_02
                     ]
                 ),
                 kos.imu.get_quaternion(),
@@ -94,7 +96,7 @@ async def test_client(host: str = "localhost", port: int = 50051) -> None:
             gravity_direction = quat.apply(np.array([0, 0, -1]))
 
             # Make the hips move in the opposite direction of gravity.
-            scale = gravity_direction[0] - 0.1
+            scale = gravity_direction[0] - 0.2
             delta = scale * -100.0
 
             logger.info("Delta: %f", delta)
