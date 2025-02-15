@@ -14,6 +14,7 @@ import grpc
 from kos_protos import actuator_pb2_grpc, imu_pb2_grpc, sim_pb2_grpc
 from kscale import K
 from kscale.web.gen.api import RobotURDFMetadataOutput
+from mujoco_scenes.mjcf import list_scenes
 
 from kos_sim import logger
 from kos_sim.services import ActuatorService, IMUService, SimService
@@ -35,6 +36,7 @@ class SimulationServer:
         command_delay_min: float = 0.0,
         command_delay_max: float = 0.0,
         sleep_time: float = 1e-6,
+        mujoco_scene: str = "smooth",
     ) -> None:
         self.simulator = MujocoSimulator(
             model_path=model_path,
@@ -45,6 +47,7 @@ class SimulationServer:
             suspended=suspended,
             command_delay_min=command_delay_min,
             command_delay_max=command_delay_max,
+            mujoco_scene=mujoco_scene,
         )
         self.host = host
         self.port = port
@@ -151,6 +154,7 @@ async def serve(
     suspended: bool = False,
     command_delay_min: float = 0.0,
     command_delay_max: float = 0.0,
+    mujoco_scene: str = "smooth",
 ) -> None:
     async with K() as api:
         model_dir, model_metadata = await asyncio.gather(
@@ -160,7 +164,6 @@ async def serve(
 
     model_path = next(
         itertools.chain(
-            model_dir.glob("*.scene.mjcf"),
             model_dir.glob("*.mjcf"),
             model_dir.glob("*.xml"),
         )
@@ -177,6 +180,7 @@ async def serve(
         suspended=suspended,
         command_delay_min=command_delay_min,
         command_delay_max=command_delay_max,
+        mujoco_scene=mujoco_scene,
     )
     await server.start()
 
@@ -192,6 +196,7 @@ async def run_server() -> None:
     parser.add_argument("--suspended", action="store_true", help="Suspended simulation")
     parser.add_argument("--command-delay-min", type=float, default=0.0, help="Minimum command delay")
     parser.add_argument("--command-delay-max", type=float, default=0.0, help="Maximum command delay")
+    parser.add_argument("--scene", choices=list_scenes(), default="smooth", help="Mujoco scene to use")
     parser.add_argument("--debug", action="store_true", help="Enable debug logging")
     args = parser.parse_args()
 
@@ -206,6 +211,7 @@ async def run_server() -> None:
     suspended = args.suspended
     command_delay_min = args.command_delay_min
     command_delay_max = args.command_delay_max
+    mujoco_scene = args.scene
 
     logger.info("Model name: %s", model_name)
     logger.info("Port: %d", port)
@@ -215,6 +221,7 @@ async def run_server() -> None:
     logger.info("Suspended: %s", suspended)
     logger.info("Command delay min: %f", command_delay_min)
     logger.info("Command delay max: %f", command_delay_max)
+    logger.info("Mujoco scene: %s", mujoco_scene)
 
     await serve(
         model_name=model_name,
@@ -226,6 +233,7 @@ async def run_server() -> None:
         suspended=suspended,
         command_delay_min=command_delay_min,
         command_delay_max=command_delay_max,
+        mujoco_scene=mujoco_scene,
     )
 
 

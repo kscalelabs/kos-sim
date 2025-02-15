@@ -9,6 +9,7 @@ import mujoco
 import mujoco_viewer
 import numpy as np
 from kscale.web.gen.api import RobotURDFMetadataOutput
+from mujoco_scenes.mjcf import load_mjmodel
 
 from kos_sim import logger
 
@@ -47,6 +48,7 @@ class MujocoSimulator:
         suspended: bool = False,
         command_delay_min: float = 0.0,
         command_delay_max: float = 0.0,
+        mujoco_scene: str = "smooth",
     ) -> None:
         # Stores parameters.
         self._model_path = model_path
@@ -77,7 +79,7 @@ class MujocoSimulator:
 
         # Load MuJoCo model and initialize data
         logger.info("Loading model from %s", model_path)
-        self._model = mujoco.MjModel.from_xml_path(str(model_path))
+        self._model = load_mjmodel(model_path, mujoco_scene)
         self._model.opt.timestep = self._dt
         self._data = mujoco.MjData(self._model)
 
