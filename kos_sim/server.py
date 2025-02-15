@@ -82,9 +82,7 @@ class SimulationServer:
 
         try:
             while not self._stop_event.is_set():
-
                 while self.simulator._sim_time < time.time():
-
                     # Run one control loop.
                     async with self.control_lock:
                         for _ in range(self.simulator._sim_decimation):
