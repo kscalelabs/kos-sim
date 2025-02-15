@@ -1,5 +1,6 @@
 """Service implementations for MuJoCo simulation."""
 
+import asyncio
 import math
 
 import grpc
@@ -16,15 +17,13 @@ from kos_protos import (
 
 from kos_sim import logger
 from kos_sim.simulator import ConfigureActuatorRequest, MujocoSimulator
-from kos_sim.stepping import StepController
 
 
 class SimService(sim_pb2_grpc.SimulationServiceServicer):
     """Implementation of SimService that wraps a MuJoCo simulation."""
 
-    def __init__(self, simulator: MujocoSimulator, step_controller: StepController) -> None:
+    def __init__(self, simulator: MujocoSimulator) -> None:
         self.simulator = simulator
-        self.step_controller = step_controller
 
     async def Reset(  # noqa: N802
         self,
@@ -33,7 +32,6 @@ class SimService(sim_pb2_grpc.SimulationServiceServicer):
     ) -> common_pb2.ActionResponse:
         """Reset the simulation to initial or specified state."""
         logger.info("Reset request received")
-        await self.step_controller.set_paused(True)
         try:
             if request.HasField("initial_state"):
                 qpos = list(request.initial_state.qpos)
@@ -42,7 +40,6 @@ class SimService(sim_pb2_grpc.SimulationServiceServicer):
             else:
                 logger.debug("Resetting to default state")
                 await self.simulator.reset()
-            await self.step_controller.set_paused(False)
             return common_pb2.ActionResponse(success=True)
         except Exception as e:
             logger.error("Reset failed: %s", e)
@@ -58,7 +55,6 @@ class SimService(sim_pb2_grpc.SimulationServiceServicer):
         """Pause or unpause the simulation."""
         logger.info("SetPaused request received: paused=%s", request.paused)
         try:
-            await self.step_controller.set_paused(request.paused)
             return common_pb2.ActionResponse(success=True)
         except Exception as e:
             logger.error("SetPaused failed: %s", e)
@@ -81,7 +77,6 @@ class SimService(sim_pb2_grpc.SimulationServiceServicer):
         """Set simulation parameters."""
         logger.info("SetParameters request received: %s", request)
         try:
-            await self.step_controller.set_paused(True)
             params = request.parameters
             if params.HasField("time_scale"):
                 logger.debug("Setting time scale to %f", params.time_scale)
@@ -93,7 +88,6 @@ class SimService(sim_pb2_grpc.SimulationServiceServicer):
                 logger.debug("Setting initial state: %s", params.initial_state)
                 qpos = list(params.initial_state.qpos)
                 await self.simulator.reset(qpos)
-            await self.step_controller.set_paused(False)
             return common_pb2.ActionResponse(success=True)
         except Exception as e:
             logger.error("SetParameters failed: %s", e)
@@ -125,9 +119,9 @@ class SimService(sim_pb2_grpc.SimulationServiceServicer):
 class ActuatorService(actuator_pb2_grpc.ActuatorServiceServicer):
     """Implementation of ActuatorService that wraps a MuJoCo simulation."""
 
-    def __init__(self, simulator: MujocoSimulator, step_controller: StepController) -> None:
+    def __init__(self, simulator: MujocoSimulator, control_lock: asyncio.Lock) -> None:
         self.simulator = simulator
-        self.step_controller = step_controller
+        self.control_lock = control_lock
 
     async def CommandActuators(  # noqa: N802
         self,
@@ -138,7 +132,8 @@ class ActuatorService(actuator_pb2_grpc.ActuatorServiceServicer):
         try:
             # Convert degrees to radians.
             commands = {cmd.actuator_id: math.radians(cmd.position) for cmd in request.commands}
-            await self.simulator.command_actuators(commands)
+            async with self.control_lock:
+                await self.simulator.command_actuators(commands)
             return actuator_pb2.CommandActuatorsResponse()
         except Exception as e:
             context.set_code(grpc.StatusCode.INTERNAL)
@@ -200,14 +195,12 @@ class IMUService(imu_pb2_grpc.IMUServiceServicer):
     def __init__(
         self,
         simulator: MujocoSimulator,
-        step_controller: StepController,
         acc_name: str | None = "imu_acc",
         gyro_name: str | None = "imu_gyro",
         mag_name: str | None = "imu_mag",
         quat_name: str | None = "base_link_quat",
     ) -> None:
         self.simulator = simulator
-        self.step_controller = step_controller
         self.acc_name = acc_name
         self.gyro_name = gyro_name
         self.mag_name = mag_name
@@ -270,6 +263,7 @@ class IMUService(imu_pb2_grpc.IMUServiceServicer):
             if self.quat_name is None:
                 raise ValueError("Quaternion name not set")
             quat_data = await self.simulator.get_sensor_data(self.quat_name)
+
             # Extract quaternion components
             w, x, y, z = [float(q) for q in quat_data]
 

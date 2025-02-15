@@ -18,7 +18,6 @@ from kscale.web.gen.api import RobotURDFMetadataOutput
 from kos_sim import logger
 from kos_sim.services import ActuatorService, IMUService, SimService
 from kos_sim.simulator import MujocoSimulator
-from kos_sim.stepping import StepController, StepMode
 from kos_sim.utils import get_sim_artifacts_path
 
 
@@ -29,7 +28,6 @@ class SimulationServer:
         model_metadata: RobotURDFMetadataOutput,
         host: str = "localhost",
         port: int = 50051,
-        step_mode: StepMode = StepMode.CONTINUOUS,
         dt: float = 0.001,
         gravity: bool = True,
         render: bool = True,
@@ -48,12 +46,12 @@ class SimulationServer:
             command_delay_min=command_delay_min,
             command_delay_max=command_delay_max,
         )
-        self.step_controller = StepController(self.simulator, mode=step_mode)
         self.host = host
         self.port = port
         self._sleep_time = sleep_time
         self._stop_event = asyncio.Event()
         self._server = None
+        self.control_lock = asyncio.Lock()
 
     async def _grpc_server_loop(self) -> None:
         """Run the async gRPC server."""
@@ -63,9 +61,9 @@ class SimulationServer:
         assert self._server is not None
 
         # Add our services (these need to be modified to be async as well)
-        actuator_service = ActuatorService(self.simulator, self.step_controller)
-        imu_service = IMUService(self.simulator, self.step_controller)
-        sim_service = SimService(self.simulator, self.step_controller)
+        actuator_service = ActuatorService(self.simulator, self.control_lock)
+        imu_service = IMUService(self.simulator)
+        sim_service = SimService(self.simulator)
 
         actuator_pb2_grpc.add_ActuatorServiceServicer_to_server(actuator_service, self._server)
         imu_pb2_grpc.add_IMUServiceServicer_to_server(imu_service, self._server)
@@ -79,43 +77,32 @@ class SimulationServer:
 
     async def simulation_loop(self) -> None:
         """Run the simulation loop asynchronously."""
-        last_update = time.time()
-        last_control_update = time.time()
-        control_dt = 1.0 / self.simulator._control_frequency
+        start_time = time.time()
+        num_renders = 0
 
         try:
             while not self._stop_event.is_set():
-                current_time = time.time()
-                sim_time = current_time - last_update
-                control_time = current_time - last_control_update
 
-                if await self.step_controller.should_step():
-                    # Check if it's time for a control update
-                    if control_time >= control_dt:
-                        steps = self.simulator._sim_decimation
-                        logger.debug(
-                            "Running control update with %d simulation steps (control_time: %.3f, control_dt: %.3f)",
-                            steps,
-                            control_time,
-                            control_dt,
-                        )
-                        # Run exactly sim_decimation steps for each control update
-                        for _ in range(steps):
+                while self.simulator._sim_time < time.time():
+
+                    # Run one control loop.
+                    async with self.control_lock:
+                        for _ in range(self.simulator._sim_decimation):
                             await self.simulator.step()
-                        last_control_update = current_time
-                    else:
-                        # If we're between control updates, don't run any steps
-                        steps = 0
-
-                    if steps > 0:
-                        last_update = current_time
 
                 await self.simulator.render()
 
-                # Calculate sleep time to maintain control frequency
-                next_control_time = last_control_update + control_dt
-                sleep_time = max(0, next_control_time - time.time())
-                await asyncio.sleep(sleep_time)
+                # Sleep until the next control update.
+                current_time = time.time()
+                if current_time < self.simulator._sim_time:
+                    await asyncio.sleep(self.simulator._sim_time - current_time)
+
+                num_renders += 1
+                logger.debug(
+                    "Simulation time: %f, rendering frequency: %f",
+                    self.simulator._sim_time,
+                    num_renders / (time.time() - start_time),
+                )
 
         except Exception as e:
             logger.error("Simulation loop failed: %s", e)
