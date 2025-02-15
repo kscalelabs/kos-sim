@@ -45,6 +45,7 @@ py-files := $(shell find kos_sim tests -name '*.py' -not -path "./ref/*")
 format:
 	@black $(py-files)
 	@ruff format $(py-files)
+	@ruff check --fix $(py-files)
 .PHONY: format
 
 static-checks:

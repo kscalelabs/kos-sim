@@ -1,5 +1,6 @@
 """Wrapper around MuJoCo simulation."""
 
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import NotRequired, TypedDict, TypeVar
@@ -61,7 +62,8 @@ class MujocoSimulator:
         if (control_frequency := self._metadata.control_frequency) is None:
             raise ValueError("Control frequency is not set")
         self._control_frequency = float(control_frequency)
-        self._sim_decimation = int(1 / self._control_frequency / self._dt)
+        self._control_dt = 1.0 / self._control_frequency
+        self._sim_decimation = int(self._control_dt / self._dt)
 
         # Gets the joint name mapping.
         if self._metadata.joint_name_to_metadata is None:
@@ -127,7 +129,7 @@ class MujocoSimulator:
         }
 
         # Add control parameters
-        self._sim_time = 0.0
+        self._sim_time = time.time()
         self._current_commands: dict[str, tuple[float, float]] = {}
 
     async def step(self) -> None:
@@ -139,13 +141,11 @@ class MujocoSimulator:
         for name, (target_pos, application_time) in self._current_commands.items():
             if self._sim_time >= application_time:
                 actuator_id = self._actuator_name_to_id[name]
-                logger.debug("Setting actuator %s (id %d) to %f", name, actuator_id, target_pos)
                 self._data.ctrl[actuator_id] = target_pos
                 commands_to_remove.append(name)
 
         # Remove processed commands
         if commands_to_remove:
-            logger.debug("Removing %d commands at sim time %f", len(commands_to_remove), self._sim_time)
             for name in commands_to_remove:
                 self._current_commands.pop(name)
 
@@ -175,7 +175,6 @@ class MujocoSimulator:
 
     async def get_actuator_state(self, joint_id: int) -> ActuatorState:
         """Get current state of an actuator using real joint ID."""
-        logger.debug("Getting actuator state for joint ID: %s", joint_id)
         if joint_id not in self._joint_id_to_name:
             raise KeyError(f"Joint ID {joint_id} not found in config mappings")
 
@@ -206,7 +205,6 @@ class MujocoSimulator:
             delay = np.random.uniform(self._command_delay_min, self._command_delay_max)
             application_time = self._sim_time + delay
 
-            logger.debug("Setting actuator %s to %f with delay %f s", actuator_name, command, delay)
             self._current_commands[actuator_name] = (command, application_time)
 
     async def configure_actuator(self, joint_id: int, configuration: ConfigureActuatorRequest) -> None:
@@ -241,9 +239,12 @@ class MujocoSimulator:
                 configuration["max_torque"],
             )
 
+    @property
+    def sim_time(self) -> float:
+        return self._sim_time
+
     async def reset(self, qpos: list[float] | None = None) -> None:
         """Reset simulation to specified or default state."""
-        self._sim_time = 0.0
         self._current_commands.clear()
 
         mujoco.mj_resetData(self._model, self._data)
