@@ -36,7 +36,7 @@ class SimulationServer:
         suspended: bool = False,
         command_delay_min: float = 0.0,
         command_delay_max: float = 0.0,
-        sleep_time: float = 0.0001,
+        sleep_time: float = 1e-6,
     ) -> None:
         self.simulator = MujocoSimulator(
             model_path=model_path,
@@ -80,30 +80,42 @@ class SimulationServer:
     async def simulation_loop(self) -> None:
         """Run the simulation loop asynchronously."""
         last_update = time.time()
+        last_control_update = time.time()
+        control_dt = 1.0 / self.simulator._control_frequency
 
         try:
             while not self._stop_event.is_set():
                 current_time = time.time()
                 sim_time = current_time - last_update
+                control_time = current_time - last_control_update
 
                 if await self.step_controller.should_step():
-                    steps = 0
-                    while sim_time > 0:
-                        await self.simulator.step()
-                        sim_time -= self.simulator.timestep
-                        steps += 1
-                    logger.debug(
-                        "Ran %d simulation steps (sim_time: %.3f, timestep: %.3f)",
-                        steps,
-                        current_time - last_update,
-                        self.simulator.timestep,
-                    )
-                    last_update = current_time
+                    # Check if it's time for a control update
+                    if control_time >= control_dt:
+                        steps = self.simulator._sim_decimation
+                        logger.debug(
+                            "Running control update with %d simulation steps (control_time: %.3f, control_dt: %.3f)",
+                            steps,
+                            control_time,
+                            control_dt,
+                        )
+                        # Run exactly sim_decimation steps for each control update
+                        for _ in range(steps):
+                            await self.simulator.step()
+                        last_control_update = current_time
+                    else:
+                        # If we're between control updates, don't run any steps
+                        steps = 0
+
+                    if steps > 0:
+                        last_update = current_time
 
                 await self.simulator.render()
 
-                # Add a small sleep to prevent the loop from consuming too much CPU.
-                await asyncio.sleep(self._sleep_time)
+                # Calculate sleep time to maintain control frequency
+                next_control_time = last_control_update + control_dt
+                sleep_time = max(0, next_control_time - time.time())
+                await asyncio.sleep(sleep_time)
 
         except Exception as e:
             logger.error("Simulation loop failed: %s", e)
