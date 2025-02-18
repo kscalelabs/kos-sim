@@ -88,6 +88,7 @@ class SimulationServer:
                     # Run one control loop.
                     for _ in range(self.simulator._sim_decimation):
                         await self.simulator.step()
+                    await asyncio.sleep(self._sleep_time)
 
                 await self.simulator.render()
 
