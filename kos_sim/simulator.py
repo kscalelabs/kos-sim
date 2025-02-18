@@ -54,6 +54,7 @@ class MujocoSimulator:
         suspended: bool = False,
         command_delay_min: float = 0.0,
         command_delay_max: float = 0.0,
+        pd_update_frequency: float = 100.0,
         mujoco_scene: str = "smooth",
     ) -> None:
         # Stores parameters.
@@ -65,6 +66,7 @@ class MujocoSimulator:
         self._suspended = suspended
         self._command_delay_min = command_delay_min
         self._command_delay_max = command_delay_max
+        self._update_pd_delta = 1.0 / pd_update_frequency
 
         # Gets the sim decimation.
         if (control_frequency := self._metadata.control_frequency) is None:
@@ -191,6 +193,7 @@ class MujocoSimulator:
                 + kd * (target_command["velocity"] - current_velocity)
                 + target_command["torque"]
             )
+            logger.debug("Setting ctrl for actuator %s to %f", actuator_id, target_torque)
             self._data.ctrl[actuator_id] = target_torque
 
         # Step physics - allow other coroutines to run during computation
@@ -249,7 +252,7 @@ class MujocoSimulator:
             delay = np.random.uniform(self._command_delay_min, self._command_delay_max)
             application_time = self._sim_time + delay
 
-            self._next_commands[actuator_name] = (command, application_time)
+            self._next_commands[joint_name] = (command, application_time)
 
     async def configure_actuator(self, joint_id: int, configuration: ConfigureActuatorRequest) -> None:
         """Configure an actuator using real joint ID."""
