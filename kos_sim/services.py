@@ -131,7 +131,14 @@ class ActuatorService(actuator_pb2_grpc.ActuatorServiceServicer):
         """Implements CommandActuators by forwarding to simulator."""
         try:
             # Convert degrees to radians.
-            commands = {cmd.actuator_id: math.radians(cmd.position) for cmd in request.commands}
+            commands = {
+                cmd.actuator_id: {
+                    "position": math.radians(cmd.position),
+                    "velocity": math.radians(cmd.velocity),
+                    "torque": cmd.torque,
+                }
+                for cmd in request.commands
+            }
             async with self.control_lock:
                 await self.simulator.command_actuators(commands)
             return actuator_pb2.CommandActuatorsResponse()
