@@ -261,30 +261,14 @@ class MujocoSimulator:
                 f"Joint ID {joint_id} not found in config mappings. "
                 f"The available joint IDs are {self._joint_id_to_actuator_id.keys()}"
             )
-        actuator_id = self._joint_id_to_actuator_id[joint_id]
 
+        joint_name = self._joint_id_to_name[joint_id]
         if "kp" in configuration:
-            prev_kp = float(self._model.actuator_gainprm[actuator_id, 0])
-            self._model.actuator_gainprm[actuator_id, 0] = configuration["kp"]
-            logger.debug("Set kp for actuator %s from %f to %f", joint_id, prev_kp, configuration["kp"])
-
+            self._joint_name_to_kp[joint_name] = configuration["kp"]
         if "kd" in configuration:
-            prev_kd = -float(self._model.actuator_biasprm[actuator_id, 2])
-            self._model.actuator_biasprm[actuator_id, 2] = -configuration["kd"]
-            logger.debug("Set kd for actuator %s from %f to %f", joint_id, prev_kd, configuration["kd"])
-
+            self._joint_name_to_kd[joint_name] = configuration["kd"]
         if "max_torque" in configuration:
-            prev_min_torque = float(self._model.actuator_forcerange[actuator_id, 0])
-            prev_max_torque = float(self._model.actuator_forcerange[actuator_id, 1])
-            self._model.actuator_forcerange[actuator_id, 0] = -configuration["max_torque"]
-            self._model.actuator_forcerange[actuator_id, 1] = configuration["max_torque"]
-            logger.debug(
-                "Set max_torque for actuator %s from (%f, %f) to +/- %f",
-                joint_id,
-                prev_min_torque,
-                prev_max_torque,
-                configuration["max_torque"],
-            )
+            self._model.actuator_gainprm[self._joint_id_to_actuator_id[joint_id], 0] = configuration["max_torque"]
 
     @property
     def sim_time(self) -> float:
