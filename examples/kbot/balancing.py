@@ -4,7 +4,6 @@ import argparse
 import asyncio
 import logging
 import time
-from dataclasses import dataclass
 
 import colorlogging
 import numpy as np
@@ -14,50 +13,10 @@ from scipy.spatial.transform import Rotation as R
 logger = logging.getLogger(__name__)
 
 
-@dataclass
-class Actuator:
-    actuator_id: int
-    kp: float
-    kd: float
-
-
-ACTUATOR_LIST: list[Actuator] = [
-    Actuator(11, 150.0, 8.0),  # left_shoulder_pitch_03
-    Actuator(12, 150.0, 8.0),  # left_shoulder_roll_03
-    Actuator(13, 50.0, 5.0),  # left_shoulder_yaw_02
-    Actuator(14, 50.0, 5.0),  # left_elbow_02
-    Actuator(15, 20.0, 2.0),  # left_wrist_02
-    Actuator(21, 150.0, 8.0),  # right_shoulder_pitch_03
-    Actuator(22, 150.0, 8.0),  # right_shoulder_roll_03
-    Actuator(23, 50.0, 5.0),  # right_shoulder_yaw_02
-    Actuator(24, 50.0, 5.0),  # right_elbow_02
-    Actuator(25, 20.0, 2.0),  # right_wrist_02
-    Actuator(31, 100.0, 5.0),  # left_hip_pitch_04
-    Actuator(32, 50.0, 8.0),  # left_hip_roll_03
-    Actuator(33, 8.0, 50.0),  # left_hip_yaw_03
-    Actuator(34, 100.0, 5.0),  # left_knee_04
-    Actuator(35, 40.0, 3.0),  # left_ankle_02
-    Actuator(41, 100.0, 5.0),  # right_hip_pitch_04
-    Actuator(42, 50.0, 8.0),  # right_hip_roll_03
-    Actuator(43, 50.0, 8.0),  # right_hip_yaw_03
-    Actuator(44, 100.0, 5.0),  # right_knee_04
-    Actuator(45, 40.0, 5.0),  # right_ankle_02
-]
-
-
 async def test_client(host: str = "localhost", port: int = 50051) -> None:
     logger.info("Starting test client...")
 
     async with KOS(ip=host, port=port) as kos:
-        # Configures actuators.
-        for actuator in ACTUATOR_LIST:
-            await kos.actuator.configure_actuator(
-                actuator_id=actuator.actuator_id,
-                kp=actuator.kp,
-                kd=actuator.kd,
-                torque_enabled=True,
-            )
-
         # Reset the simulation.
         await kos.sim.reset(initial_state={"qpos": [0.0, 0.0, 1.5, 0.0, 0.0, 0.0, 1.0] + [0.0] * 20})
 
