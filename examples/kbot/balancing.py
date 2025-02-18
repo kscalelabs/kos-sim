@@ -65,27 +65,27 @@ async def test_client(host: str = "localhost", port: int = 50051) -> None:
                 kos.actuator.command_actuators(
                     [
                         # Left arm.
-                        {"actuator_id": 11, "position": 0.0},  # left_shoulder_pitch_03
-                        {"actuator_id": 12, "position": -90.0},  # left_shoulder_roll_03
-                        {"actuator_id": 13, "position": 0.0},  # left_shoulder_yaw_02
-                        {"actuator_id": 14, "position": 0.0},  # left_elbow_02
-                        {"actuator_id": 15, "position": 0.0},  # left_wrist_02
+                        {"actuator_id": 11, "position": 0.0, "velocity": 0.0},  # left_shoulder_pitch_03
+                        {"actuator_id": 12, "position": -20.0, "velocity": 0.0},  # left_shoulder_roll_03
+                        {"actuator_id": 13, "position": 0.0, "velocity": 0.0},  # left_shoulder_yaw_02
+                        {"actuator_id": 14, "position": 0.0, "velocity": 0.0},  # left_elbow_02
+                        {"actuator_id": 15, "position": 0.0, "velocity": 0.0},  # left_wrist_02
                         # Right arm.
-                        {"actuator_id": 21, "position": 0.0},  # right_shoulder_pitch_03
-                        {"actuator_id": 22, "position": 90.0},  # right_shoulder_roll_03
-                        {"actuator_id": 23, "position": 0.0},  # right_shoulder_yaw_02
-                        {"actuator_id": 24, "position": 0.0},  # right_elbow_02
-                        {"actuator_id": 25, "position": 0.0},  # right_wrist_02
+                        {"actuator_id": 21, "position": 0.0, "velocity": 0.0},  # right_shoulder_pitch_03
+                        {"actuator_id": 22, "position": 20.0, "velocity": 0.0},  # right_shoulder_roll_03
+                        {"actuator_id": 23, "position": 0.0, "velocity": 0.0},  # right_shoulder_yaw_02
+                        {"actuator_id": 24, "position": 0.0, "velocity": 0.0},  # right_elbow_02
+                        {"actuator_id": 25, "position": 0.0, "velocity": 0.0},  # right_wrist_02
                         # Right leg.
-                        {"actuator_id": 41, "position": 0.0},  # right_hip_pitch_04
-                        {"actuator_id": 42, "position": 0.0},  # right_hip_roll_03
-                        {"actuator_id": 44, "position": 0.0},  # right_knee_04
-                        {"actuator_id": 45, "position": 0.0},  # right_ankle_02
+                        {"actuator_id": 41, "position": 0.0, "velocity": 0.0},  # right_hip_pitch_04
+                        {"actuator_id": 42, "position": 0.0, "velocity": 0.0},  # right_hip_roll_03
+                        {"actuator_id": 44, "position": 0.0, "velocity": 0.0},  # right_knee_04
+                        {"actuator_id": 45, "position": 0.0, "velocity": 0.0},  # right_ankle_02
                         # Left leg.
-                        {"actuator_id": 31, "position": 0.0},  # left_hip_pitch_04
-                        {"actuator_id": 32, "position": 0.0},  # left_hip_roll_03
-                        {"actuator_id": 34, "position": 0.0},  # left_knee_04
-                        {"actuator_id": 35, "position": 0.0},  # left_ankle_02
+                        {"actuator_id": 31, "position": 0.0, "velocity": 0.0},  # left_hip_pitch_04
+                        {"actuator_id": 32, "position": 0.0, "velocity": 0.0},  # left_hip_roll_03
+                        {"actuator_id": 34, "position": 0.0, "velocity": 0.0},  # left_knee_04
+                        {"actuator_id": 35, "position": 0.0, "velocity": 0.0},  # left_ankle_02
                     ]
                 ),
                 kos.imu.get_quaternion(),
@@ -97,7 +97,7 @@ async def test_client(host: str = "localhost", port: int = 50051) -> None:
 
             # Make the hips move in the opposite direction of gravity.
             scale = gravity_direction[0] + 0.05
-            delta = scale * -100.0
+            delta = scale * -300.0
 
             logger.info("Delta: %f", delta)
             if next_time > current_time:
