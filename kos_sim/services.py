@@ -1,6 +1,5 @@
 """Service implementations for MuJoCo simulation."""
 
-import asyncio
 import math
 
 import grpc
@@ -16,7 +15,7 @@ from kos_protos import (
 )
 
 from kos_sim import logger
-from kos_sim.simulator import ConfigureActuatorRequest, MujocoSimulator
+from kos_sim.simulator import ActuatorCommand, ConfigureActuatorRequest, MujocoSimulator
 
 
 class SimService(sim_pb2_grpc.SimulationServiceServicer):
@@ -119,9 +118,8 @@ class SimService(sim_pb2_grpc.SimulationServiceServicer):
 class ActuatorService(actuator_pb2_grpc.ActuatorServiceServicer):
     """Implementation of ActuatorService that wraps a MuJoCo simulation."""
 
-    def __init__(self, simulator: MujocoSimulator, control_lock: asyncio.Lock) -> None:
+    def __init__(self, simulator: MujocoSimulator) -> None:
         self.simulator = simulator
-        self.control_lock = control_lock
 
     async def CommandActuators(  # noqa: N802
         self,
@@ -131,9 +129,15 @@ class ActuatorService(actuator_pb2_grpc.ActuatorServiceServicer):
         """Implements CommandActuators by forwarding to simulator."""
         try:
             # Convert degrees to radians.
-            commands = {cmd.actuator_id: math.radians(cmd.position) for cmd in request.commands}
-            async with self.control_lock:
-                await self.simulator.command_actuators(commands)
+            commands: dict[int, ActuatorCommand] = {
+                cmd.actuator_id: {
+                    "position": math.radians(cmd.position),
+                    "velocity": math.radians(cmd.velocity),
+                    "torque": cmd.torque,
+                }
+                for cmd in request.commands
+            }
+            await self.simulator.command_actuators(commands)
             return actuator_pb2.CommandActuatorsResponse()
         except Exception as e:
             context.set_code(grpc.StatusCode.INTERNAL)

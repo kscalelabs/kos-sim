@@ -9,6 +9,7 @@ import mujoco
 import mujoco_viewer
 import numpy as np
 from kscale.web.gen.api import RobotURDFMetadataOutput
+from mujoco_scenes.mjcf import load_mjmodel
 
 from kos_sim import logger
 
@@ -36,6 +37,12 @@ class ActuatorState:
     effort: float | None = None
 
 
+class ActuatorCommand(TypedDict):
+    position: NotRequired[float]
+    velocity: NotRequired[float]
+    torque: NotRequired[float]
+
+
 class MujocoSimulator:
     def __init__(
         self,
@@ -47,6 +54,8 @@ class MujocoSimulator:
         suspended: bool = False,
         command_delay_min: float = 0.0,
         command_delay_max: float = 0.0,
+        pd_update_frequency: float = 100.0,
+        mujoco_scene: str = "smooth",
     ) -> None:
         # Stores parameters.
         self._model_path = model_path
@@ -57,6 +66,7 @@ class MujocoSimulator:
         self._suspended = suspended
         self._command_delay_min = command_delay_min
         self._command_delay_max = command_delay_max
+        self._update_pd_delta = 1.0 / pd_update_frequency
 
         # Gets the sim decimation.
         if (control_frequency := self._metadata.control_frequency) is None:
@@ -68,18 +78,33 @@ class MujocoSimulator:
         # Gets the joint name mapping.
         if self._metadata.joint_name_to_metadata is None:
             raise ValueError("Joint name to metadata is not set")
+
+        # Gets the IDs, KPs, and KDs for each joint.
         self._joint_name_to_id = {name: _nn(joint.id) for name, joint in self._metadata.joint_name_to_metadata.items()}
+        self._joint_name_to_kp = {
+            name: float(_nn(joint.kp)) for name, joint in self._metadata.joint_name_to_metadata.items()
+        }
+        self._joint_name_to_kd = {
+            name: float(_nn(joint.kd)) for name, joint in self._metadata.joint_name_to_metadata.items()
+        }
+
+        # Gets the inverse mapping.
         self._joint_id_to_name = {v: k for k, v in self._joint_name_to_id.items()}
         if len(self._joint_name_to_id) != len(self._joint_id_to_name):
             raise ValueError("Joint IDs are not unique!")
 
-        logger.info("Joint ID to name: %s", self._joint_id_to_name)
-
         # Load MuJoCo model and initialize data
         logger.info("Loading model from %s", model_path)
-        self._model = mujoco.MjModel.from_xml_path(str(model_path))
+        self._model = load_mjmodel(model_path, mujoco_scene)
         self._model.opt.timestep = self._dt
         self._data = mujoco.MjData(self._model)
+
+        model_joint_names = {self._model.joint(i).name for i in range(self._model.njnt)}
+        invalid_joint_names = [name for name in self._joint_name_to_id if name not in model_joint_names]
+        if invalid_joint_names:
+            raise ValueError(f"Joint names {invalid_joint_names} not found in model")
+
+        logger.info("Joint ID to name: %s", self._joint_id_to_name)
 
         self._gravity = self._gravity
         self._suspended = self._suspended
@@ -117,6 +142,7 @@ class MujocoSimulator:
         # Cache lookups after initialization
         self._sensor_name_to_id = {self._model.sensor(i).name: i for i in range(self._model.nsensor)}
         logger.debug("Sensor IDs: %s", self._sensor_name_to_id)
+
         self._actuator_name_to_id = {self._model.actuator(i).name: i for i in range(self._model.nu)}
         logger.debug("Actuator IDs: %s", self._actuator_name_to_id)
 
@@ -127,10 +153,16 @@ class MujocoSimulator:
         self._joint_id_to_actuator_id = {
             joint_id: self._actuator_name_to_id[f"{name}_ctrl"] for joint_id, name in self._joint_id_to_name.items()
         }
+        self._actuator_id_to_joint_id = {
+            actuator_id: joint_id for joint_id, actuator_id in self._joint_id_to_actuator_id.items()
+        }
 
         # Add control parameters
         self._sim_time = time.time()
-        self._current_commands: dict[str, tuple[float, float]] = {}
+        self._current_commands: dict[str, ActuatorCommand] = {
+            name: {"position": 0.0, "velocity": 0.0, "torque": 0.0} for name in self._joint_name_to_id
+        }
+        self._next_commands: dict[str, tuple[ActuatorCommand, float]] = {}
 
     async def step(self) -> None:
         """Execute one step of the simulation."""
@@ -138,16 +170,31 @@ class MujocoSimulator:
 
         # Process commands that are ready to be applied
         commands_to_remove = []
-        for name, (target_pos, application_time) in self._current_commands.items():
+        for name, (target_command, application_time) in self._next_commands.items():
             if self._sim_time >= application_time:
-                actuator_id = self._actuator_name_to_id[name]
-                self._data.ctrl[actuator_id] = target_pos
+                self._current_commands[name] = target_command
                 commands_to_remove.append(name)
 
         # Remove processed commands
         if commands_to_remove:
             for name in commands_to_remove:
-                self._current_commands.pop(name)
+                self._next_commands.pop(name)
+
+        # Sets the ctrl values from the current commands.
+        for name, target_command in self._current_commands.items():
+            joint_id = self._joint_name_to_id[name]
+            actuator_id = self._joint_id_to_actuator_id[joint_id]
+            kp = self._joint_name_to_kp[name]
+            kd = self._joint_name_to_kd[name]
+            current_position = self._data.joint(name).qpos
+            current_velocity = self._data.joint(name).qvel
+            target_torque = (
+                kp * (target_command["position"] - current_position)
+                + kd * (target_command["velocity"] - current_velocity)
+                + target_command["torque"]
+            )
+            logger.debug("Setting ctrl for actuator %s to %f", actuator_id, target_torque)
+            self._data.ctrl[actuator_id] = target_torque
 
         # Step physics - allow other coroutines to run during computation
         mujoco.mj_step(self._model, self._data)
@@ -187,7 +234,7 @@ class MujocoSimulator:
             # effort=float(joint_data.qfrc_ext),
         )
 
-    async def command_actuators(self, commands: dict[int, float]) -> None:
+    async def command_actuators(self, commands: dict[int, ActuatorCommand]) -> None:
         """Command multiple actuators at once using real joint IDs."""
         for joint_id, command in commands.items():
             # Translate real joint ID to MuJoCo joint name
@@ -205,7 +252,7 @@ class MujocoSimulator:
             delay = np.random.uniform(self._command_delay_min, self._command_delay_max)
             application_time = self._sim_time + delay
 
-            self._current_commands[actuator_name] = (command, application_time)
+            self._next_commands[joint_name] = (command, application_time)
 
     async def configure_actuator(self, joint_id: int, configuration: ConfigureActuatorRequest) -> None:
         """Configure an actuator using real joint ID."""
@@ -245,7 +292,7 @@ class MujocoSimulator:
 
     async def reset(self, qpos: list[float] | None = None) -> None:
         """Reset simulation to specified or default state."""
-        self._current_commands.clear()
+        self._next_commands.clear()
 
         mujoco.mj_resetData(self._model, self._data)
         if qpos is not None:

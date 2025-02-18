@@ -23,27 +23,27 @@ class Actuator:
     max_torque: float
 
 
-ACTUATOR_LIST: list[Actuator] = [
-    Actuator(11, 1, 150.0, 8.0, 60.0),  # left_shoulder_pitch_03
-    Actuator(12, 5, 150.0, 8.0, 60.0),  # left_shoulder_roll_03
-    Actuator(13, 9, 50.0, 5.0, 17.0),  # left_shoulder_yaw_02
-    Actuator(14, 13, 50.0, 5.0, 17.0),  # left_elbow_02
-    Actuator(15, 17, 20.0, 2.0, 17.0),  # left_wrist_02
-    Actuator(21, 3, 150.0, 8.0, 60.0),  # right_shoulder_pitch_03
-    Actuator(22, 7, 150.0, 8.0, 60.0),  # right_shoulder_roll_03
-    Actuator(23, 11, 50.0, 5.0, 17.0),  # right_shoulder_yaw_02
-    Actuator(24, 15, 50.0, 5.0, 17.0),  # right_elbow_02
-    Actuator(25, 19, 20.0, 2.0, 17.0),  # right_wrist_02
-    Actuator(31, 0, 250.0, 30.0, 120.0),  # left_hip_pitch_04
-    Actuator(32, 4, 150.0, 8.0, 60.0),  # left_hip_roll_03
-    Actuator(33, 8, 150.0, 8.0, 60.0),  # left_hip_yaw_03
-    Actuator(34, 12, 200.0, 8.0, 120.0),  # left_knee_04
-    Actuator(35, 16, 80.0, 10.0, 17.0),  # left_ankle_02
-    Actuator(41, 2, 250.0, 30.0, 120.0),  # right_hip_pitch_04
-    Actuator(42, 6, 150.0, 8.0, 60.0),  # right_hip_roll_03
-    Actuator(43, 10, 150.0, 8.0, 60.0),  # right_hip_yaw_03
-    Actuator(44, 14, 200.0, 8.0, 120.0),  # right_knee_04
-    Actuator(45, 18, 80.0, 10.0, 17.0),  # right_ankle_02
+ACTUATOR_LIST: list[int] = [
+    11,  # left_shoulder_pitch_03
+    12,  # left_shoulder_roll_03
+    13,  # left_shoulder_yaw_02
+    14,  # left_elbow_02
+    15,  # left_wrist_02
+    21,  # right_shoulder_pitch_03
+    22,  # right_shoulder_roll_03
+    23,  # right_shoulder_yaw_02
+    24,  # right_elbow_02
+    25,  # right_wrist_02
+    31,  # left_hip_pitch_04
+    32,  # left_hip_roll_03
+    33,  # left_hip_yaw_03
+    34,  # left_knee_04
+    35,  # left_ankle_02
+    41,  # right_hip_pitch_04
+    42,  # right_hip_roll_03
+    43,  # right_hip_yaw_03
+    44,  # right_knee_04
+    45,  # right_ankle_02
 ]
 
 
@@ -65,27 +65,27 @@ async def test_client(host: str = "localhost", port: int = 50051) -> None:
                 kos.actuator.command_actuators(
                     [
                         # Left arm.
-                        {"actuator_id": 11, "position": 0.0},  # left_shoulder_pitch_03
-                        {"actuator_id": 12, "position": -90.0},  # left_shoulder_roll_03
-                        {"actuator_id": 13, "position": 0.0},  # left_shoulder_yaw_02
-                        {"actuator_id": 14, "position": 0.0},  # left_elbow_02
-                        {"actuator_id": 15, "position": 0.0},  # left_wrist_02
+                        {"actuator_id": 11, "position": 0.0, "velocity": 0.0},  # left_shoulder_pitch_03
+                        {"actuator_id": 12, "position": -20.0, "velocity": 0.0},  # left_shoulder_roll_03
+                        {"actuator_id": 13, "position": 0.0, "velocity": 0.0},  # left_shoulder_yaw_02
+                        {"actuator_id": 14, "position": 0.0, "velocity": 0.0},  # left_elbow_02
+                        {"actuator_id": 15, "position": 0.0, "velocity": 0.0},  # left_wrist_02
                         # Right arm.
-                        {"actuator_id": 21, "position": 0.0},  # right_shoulder_pitch_03
-                        {"actuator_id": 22, "position": 90.0},  # right_shoulder_roll_03
-                        {"actuator_id": 23, "position": 0.0},  # right_shoulder_yaw_02
-                        {"actuator_id": 24, "position": 0.0},  # right_elbow_02
-                        {"actuator_id": 25, "position": 0.0},  # right_wrist_02
+                        {"actuator_id": 21, "position": 0.0, "velocity": 0.0},  # right_shoulder_pitch_03
+                        {"actuator_id": 22, "position": 20.0, "velocity": 0.0},  # right_shoulder_roll_03
+                        {"actuator_id": 23, "position": 0.0, "velocity": 0.0},  # right_shoulder_yaw_02
+                        {"actuator_id": 24, "position": 0.0, "velocity": 0.0},  # right_elbow_02
+                        {"actuator_id": 25, "position": 0.0, "velocity": 0.0},  # right_wrist_02
                         # Right leg.
-                        {"actuator_id": 41, "position": -40.0 + delta},  # right_hip_pitch_04
-                        {"actuator_id": 42, "position": 0.0},  # right_hip_roll_03
-                        {"actuator_id": 44, "position": -20.0 - delta},  # right_knee_04
-                        {"actuator_id": 45, "position": -20.0 - delta},  # right_ankle_02
+                        {"actuator_id": 41, "position": 0.0, "velocity": 0.0},  # right_hip_pitch_04
+                        {"actuator_id": 42, "position": 0.0, "velocity": 0.0},  # right_hip_roll_03
+                        {"actuator_id": 44, "position": 0.0, "velocity": 0.0},  # right_knee_04
+                        {"actuator_id": 45, "position": 0.0, "velocity": 0.0},  # right_ankle_02
                         # Left leg.
-                        {"actuator_id": 31, "position": 40.0 - delta},  # left_hip_pitch_04
-                        {"actuator_id": 32, "position": 0.0},  # left_hip_roll_03
-                        {"actuator_id": 34, "position": 20.0 + delta},  # left_knee_04
-                        {"actuator_id": 35, "position": 20.0 + delta},  # left_ankle_02
+                        {"actuator_id": 31, "position": 0.0, "velocity": 0.0},  # left_hip_pitch_04
+                        {"actuator_id": 32, "position": 0.0, "velocity": 0.0},  # left_hip_roll_03
+                        {"actuator_id": 34, "position": 0.0, "velocity": 0.0},  # left_knee_04
+                        {"actuator_id": 35, "position": 0.0, "velocity": 0.0},  # left_ankle_02
                     ]
                 ),
                 kos.imu.get_quaternion(),
@@ -97,7 +97,7 @@ async def test_client(host: str = "localhost", port: int = 50051) -> None:
 
             # Make the hips move in the opposite direction of gravity.
             scale = gravity_direction[0] + 0.05
-            delta = scale * -100.0
+            delta = scale * -300.0
 
             logger.info("Delta: %f", delta)
             if next_time > current_time:

@@ -3,6 +3,7 @@
 colorlogging
 kscale
 mujoco
+mujoco-scenes
 mujoco-python-viewer
 numpy
 omegaconf
