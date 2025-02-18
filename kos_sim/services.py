@@ -15,7 +15,7 @@ from kos_protos import (
 )
 
 from kos_sim import logger
-from kos_sim.simulator import ConfigureActuatorRequest, MujocoSimulator
+from kos_sim.simulator import ActuatorCommand, ConfigureActuatorRequest, MujocoSimulator
 
 
 class SimService(sim_pb2_grpc.SimulationServiceServicer):
@@ -129,7 +129,7 @@ class ActuatorService(actuator_pb2_grpc.ActuatorServiceServicer):
         """Implements CommandActuators by forwarding to simulator."""
         try:
             # Convert degrees to radians.
-            commands = {
+            commands: dict[int, ActuatorCommand] = {
                 cmd.actuator_id: {
                     "position": math.radians(cmd.position),
                     "velocity": math.radians(cmd.velocity),
