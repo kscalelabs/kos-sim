@@ -202,7 +202,7 @@ class MujocoSimulator:
             # Find the root joint (floating_base)
             for i in range(self._model.njnt):
                 if self._model.jnt_type[i] == mujoco.mjtJoint.mjJNT_FREE:
-                    self._data.qpos[i : i + 7] = self._model.keyframe("default").qpos[i : i + 7]
+                    self._data.qpos[i : i + 7] = np.concatenate([self._initial_pos, self._initial_quat])
                     self._data.qvel[i : i + 6] = 0
                     break
 
