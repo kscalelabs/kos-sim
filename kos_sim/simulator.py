@@ -76,6 +76,7 @@ class MujocoSimulator:
         tolerance: float = 0.0,
         ls_tolerance: float = 0.0,
         o_margin: float = 0.01,
+        render_decimation: int = 15,
     ) -> None:
         # Stores parameters.
         self._model_path = model_path
@@ -94,6 +95,7 @@ class MujocoSimulator:
         self._control_frequency = float(control_frequency)
         self._control_dt = 1.0 / self._control_frequency
         self._sim_decimation = int(self._control_dt / self._dt)
+        self._render_decimation = render_decimation
 
         # Gets the joint name mapping.
         if self._metadata.joint_name_to_metadata is None:

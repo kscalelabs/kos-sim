@@ -10,6 +10,7 @@ from concurrent import futures
 from pathlib import Path
 
 import colorlogging
+from dataclasses import dataclass, field
 import grpc
 from kos_protos import actuator_pb2_grpc, imu_pb2_grpc, sim_pb2_grpc
 from kscale import K
@@ -37,6 +38,7 @@ class SimulationServer:
         command_delay_max: float = 0.0,
         sleep_time: float = 1e-6,
         mujoco_scene: str = "smooth",
+        render_decimation: int = 10,
     ) -> None:
         self.simulator = MujocoSimulator(
             model_path=model_path,
@@ -48,6 +50,7 @@ class SimulationServer:
             command_delay_min=command_delay_min,
             command_delay_max=command_delay_max,
             mujoco_scene=mujoco_scene,
+            render_decimation=render_decimation,
         )
         self.host = host
         self.port = port
@@ -81,7 +84,7 @@ class SimulationServer:
         """Run the simulation loop asynchronously."""
         start_time = time.time()
         num_renders = 0
-
+        total_steps = 0
         try:
             while not self._stop_event.is_set():
                 while self.simulator._sim_time < time.time():
@@ -90,14 +93,17 @@ class SimulationServer:
                         await self.simulator.step()
                     await asyncio.sleep(self._sleep_time)
 
-                await self.simulator.render()
+                if total_steps % self.simulator._render_decimation == 0:
+                    await self.simulator.render()
+                    num_renders += 1
+
 
                 # Sleep until the next control update.
                 current_time = time.time()
                 if current_time < self.simulator._sim_time:
                     await asyncio.sleep(self.simulator._sim_time - current_time)
 
-                num_renders += 1
+                total_steps += 1
                 logger.debug(
                     "Simulation time: %f, rendering frequency: %f",
                     self.simulator._sim_time,
@@ -154,19 +160,48 @@ async def serve(
     command_delay_min: float = 0.0,
     command_delay_max: float = 0.0,
     mujoco_scene: str = "smooth",
+    model_path: str | Path | None = None,
 ) -> None:
-    async with K() as api:
-        model_dir, model_metadata = await asyncio.gather(
-            api.download_and_extract_urdf(model_name),
-            get_model_metadata(api, model_name),
-        )
+    # TODO - remove this
+    if model_path is None:
+        async with K() as api:
+            model_dir, model_metadata = await asyncio.gather(
+                api.download_and_extract_urdf(model_name),
+                get_model_metadata(api, model_name),
+            )
 
-    model_path = next(
-        itertools.chain(
-            model_dir.glob("*.mjcf"),
-            model_dir.glob("*.xml"),
+        model_path = next(
+            itertools.chain(
+                model_dir.glob("*.mjcf"),
+                model_dir.glob("*.xml"),
+            )
         )
-    )
+    else:
+        @dataclass
+        class JointMetadata:
+            id: int
+            kp: float
+            kd: float
+
+        @dataclass
+        class ModelInfo:
+            joint_name_to_metadata: dict
+            control_frequency: float = 50.0
+
+        model_metadata = ModelInfo(
+            joint_name_to_metadata={
+                "left_hip_pitch_04": JointMetadata(id=31, kp=300.0, kd=5.0),
+                "left_hip_roll_03": JointMetadata(id=32, kp=120.0, kd=5.0),
+                "left_hip_yaw_03": JointMetadata(id=33, kp=120.0, kd=5.0),
+                "left_knee_04": JointMetadata(id=34, kp=300.0, kd=5.0),
+                "left_ankle_02": JointMetadata(id=35, kp=40.0, kd=5.0),
+                "right_hip_pitch_04": JointMetadata(id=41, kp=300.0, kd=5.0),
+                "right_hip_roll_03": JointMetadata(id=42, kp=120.0, kd=5.0),
+                "right_hip_yaw_03": JointMetadata(id=43, kp=120.0, kd=5.0),
+                "right_knee_04": JointMetadata(id=44, kp=300.0, kd=5.0),
+                "right_ankle_02": JointMetadata(id=45, kp=40.0, kd=5.0),
+            }
+        )
 
     server = SimulationServer(
         model_path,
@@ -197,6 +232,7 @@ async def run_server() -> None:
     parser.add_argument("--command-delay-max", type=float, default=0.0, help="Maximum command delay")
     parser.add_argument("--scene", choices=list_scenes(), default="smooth", help="Mujoco scene to use")
     parser.add_argument("--debug", action="store_true", help="Enable debug logging")
+    parser.add_argument("--model-path", type=str, help="Path to the model to simulate")
     args = parser.parse_args()
 
     colorlogging.configure(level=logging.DEBUG if args.debug else logging.INFO)
@@ -233,6 +269,7 @@ async def run_server() -> None:
         command_delay_min=command_delay_min,
         command_delay_max=command_delay_max,
         mujoco_scene=mujoco_scene,
+        model_path=args.model_path,
     )
 
 
