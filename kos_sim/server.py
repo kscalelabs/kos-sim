@@ -29,7 +29,7 @@ class SimulationServer:
         model_metadata: RobotURDFMetadataOutput,
         host: str = "localhost",
         port: int = 50051,
-        dt: float = 0.001,
+        dt: float = 0.0001,
         gravity: bool = True,
         render: bool = True,
         suspended: bool = False,

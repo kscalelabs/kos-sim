@@ -43,6 +43,20 @@ class ActuatorCommand(TypedDict):
     torque: NotRequired[float]
 
 
+def get_integrator(integrator: str) -> mujoco.mjtIntegrator:
+    match integrator.lower():
+        case "euler":
+            return mujoco.mjtIntegrator.mjINT_EULER
+        case "implicit":
+            return mujoco.mjtIntegrator.mjINT_IMPLICIT
+        case "implicitfast":
+            return mujoco.mjtIntegrator.mjINT_IMPLICITFAST
+        case "rk4":
+            return mujoco.mjtIntegrator.mjINT_RK4
+        case _:
+            raise ValueError(f"Invalid integrator: {integrator}")
+
+
 class MujocoSimulator:
     def __init__(
         self,
@@ -56,6 +70,12 @@ class MujocoSimulator:
         command_delay_max: float = 0.0,
         pd_update_frequency: float = 100.0,
         mujoco_scene: str = "smooth",
+        integrator: str = "implicitfast",
+        iterations: int = 6,
+        ls_iterations: int = 6,
+        tolerance: float = 0.0,
+        ls_tolerance: float = 0.0,
+        o_margin: float = 0.01,
     ) -> None:
         # Stores parameters.
         self._model_path = model_path
@@ -97,6 +117,12 @@ class MujocoSimulator:
         logger.info("Loading model from %s", model_path)
         self._model = load_mjmodel(model_path, mujoco_scene)
         self._model.opt.timestep = self._dt
+        self._model.opt.integrator = get_integrator(integrator)
+        self._model.opt.iterations = iterations
+        self._model.opt.ls_iterations = ls_iterations
+        self._model.opt.tolerance = tolerance
+        self._model.opt.ls_tolerance = ls_tolerance
+        self._model.opt.o_margin = o_margin
         self._data = mujoco.MjData(self._model)
 
         model_joint_names = {self._model.joint(i).name for i in range(self._model.njnt)}
