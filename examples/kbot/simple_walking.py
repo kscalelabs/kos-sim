@@ -109,7 +109,7 @@ async def simple_walking(
             velocities = np.array([math.radians(state.velocity) for state in response.states])
             r = R.from_quat([raw_quat.x, raw_quat.y, raw_quat.z, raw_quat.w])
             gvec = r.apply(np.array([0.0, 0.0, -1.0]), inverse=True).astype(np.double)
-            print(gvec)
+
             cur_pos_obs = positions - default
             cur_vel_obs = velocities
             input_data["x_vel.1"] = np.array([x_vel_cmd], dtype=np.float32)
@@ -163,7 +163,12 @@ async def main() -> None:
         policy = ONNXModel("assets/simple_walking.onnx")
         default_position = [0.23, 0.0, 0.0, 0.441, -0.195, -0.23, 0.0, 0.0, -0.441, 0.195]
 
-        sim_process = subprocess.Popen(["kos-sim", "kbot-v1", "--debug"])
+        sim_process = subprocess.Popen(
+            [
+                "kos-sim", "kbot-v1", "--debug", 
+                "--model-path", "assets/simple_kbot/robot_fixed.xml"
+            ]
+        )
         time.sleep(2)
 
         await simple_walking(policy, default_position, args.host, args.port)

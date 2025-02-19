@@ -243,7 +243,7 @@ async def run_server() -> None:
     parser.add_argument("--command-delay-max", type=float, default=0.0, help="Maximum command delay")
     parser.add_argument("--scene", choices=list_scenes(), default="smooth", help="Mujoco scene to use")
     parser.add_argument("--debug", action="store_true", help="Enable debug logging")
-    parser.add_argument("--model-path",  type=str, help="Path to the model to simulate")
+    parser.add_argument("--model-path", type=str, help="Path to the model to simulate")
     args = parser.parse_args()
 
     colorlogging.configure(level=logging.DEBUG if args.debug else logging.INFO)
