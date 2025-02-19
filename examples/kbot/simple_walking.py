@@ -65,7 +65,7 @@ async def simple_walking(
     async with KOS(ip=host, port=port) as sim_kos:
         await sim_kos.sim.reset(
             initial_state={
-                    "qpos": [0.0, 0.0, 1.05, 1.0, 0.0, 0.0, 0.0] + default_position
+                    "qpos": [0.0, 0.0, 1.05, 0.0, 0.0, 0.0, 1.0] + default_position
                 }
             )
         count = 0
@@ -109,7 +109,7 @@ async def simple_walking(
             velocities = np.array([math.radians(state.velocity) for state in response.states])
             r = R.from_quat([raw_quat.x, raw_quat.y, raw_quat.z, raw_quat.w])
             gvec = r.apply(np.array([0.0, 0.0, -1.0]), inverse=True).astype(np.double)
-
+            print(gvec)
             cur_pos_obs = positions - default
             cur_vel_obs = velocities
             input_data["x_vel.1"] = np.array([x_vel_cmd], dtype=np.float32)

@@ -259,7 +259,6 @@ class MujocoSimulator:
         return ActuatorState(
             position=float(joint_data.qpos),
             velocity=float(joint_data.qvel),
-            # effort=float(joint_data.qfrc_ext),
         )
 
     async def command_actuators(self, commands: dict[int, ActuatorCommand]) -> None:

@@ -38,7 +38,7 @@ class SimulationServer:
         command_delay_max: float = 0.0,
         sleep_time: float = 1e-6,
         mujoco_scene: str = "smooth",
-        render_decimation: int = 10,
+        render_decimation: int = 15,
     ) -> None:
         self.simulator = MujocoSimulator(
             model_path=model_path,
@@ -188,20 +188,31 @@ async def serve(
             joint_name_to_metadata: dict
             control_frequency: float = 50.0
 
-        model_metadata = ModelInfo(
-            joint_name_to_metadata={
-                "left_hip_pitch_04": JointMetadata(id=31, kp=300.0, kd=5.0),
-                "left_hip_roll_03": JointMetadata(id=32, kp=120.0, kd=5.0),
-                "left_hip_yaw_03": JointMetadata(id=33, kp=120.0, kd=5.0),
-                "left_knee_04": JointMetadata(id=34, kp=300.0, kd=5.0),
-                "left_ankle_02": JointMetadata(id=35, kp=40.0, kd=5.0),
-                "right_hip_pitch_04": JointMetadata(id=41, kp=300.0, kd=5.0),
-                "right_hip_roll_03": JointMetadata(id=42, kp=120.0, kd=5.0),
-                "right_hip_yaw_03": JointMetadata(id=43, kp=120.0, kd=5.0),
-                "right_knee_04": JointMetadata(id=44, kp=300.0, kd=5.0),
-                "right_ankle_02": JointMetadata(id=45, kp=40.0, kd=5.0),
-            }
-        )
+    @dataclass
+    class JointMetadata:
+        id: int
+        kp: float
+        kd: float
+
+    @dataclass
+    class ModelInfo:
+        joint_name_to_metadata: dict
+        control_frequency: float = 50.0
+
+    model_metadata = ModelInfo(
+        joint_name_to_metadata={
+            "left_hip_pitch_04": JointMetadata(id=31, kp=300.0, kd=5.0),
+            "left_hip_roll_03": JointMetadata(id=32, kp=120.0, kd=5.0),
+            "left_hip_yaw_03": JointMetadata(id=33, kp=120.0, kd=5.0),
+            "left_knee_04": JointMetadata(id=34, kp=300.0, kd=5.0),
+            "left_ankle_02": JointMetadata(id=35, kp=40.0, kd=5.0),
+            "right_hip_pitch_04": JointMetadata(id=41, kp=300.0, kd=5.0),
+            "right_hip_roll_03": JointMetadata(id=42, kp=120.0, kd=5.0),
+            "right_hip_yaw_03": JointMetadata(id=43, kp=120.0, kd=5.0),
+            "right_knee_04": JointMetadata(id=44, kp=300.0, kd=5.0),
+            "right_ankle_02": JointMetadata(id=45, kp=40.0, kd=5.0),
+        }
+    )
 
     server = SimulationServer(
         model_path,
@@ -232,7 +243,7 @@ async def run_server() -> None:
     parser.add_argument("--command-delay-max", type=float, default=0.0, help="Maximum command delay")
     parser.add_argument("--scene", choices=list_scenes(), default="smooth", help="Mujoco scene to use")
     parser.add_argument("--debug", action="store_true", help="Enable debug logging")
-    parser.add_argument("--model-path", type=str, help="Path to the model to simulate")
+    parser.add_argument("--model-path",  type=str, help="Path to the model to simulate")
     args = parser.parse_args()
 
     colorlogging.configure(level=logging.DEBUG if args.debug else logging.INFO)
