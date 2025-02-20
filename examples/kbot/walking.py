@@ -29,12 +29,12 @@ class Actuator:
 
 ACTUATOR_LIST: list[Actuator] = [
     Actuator(actuator_id=31, nn_id=0, kp=300.0, kd=5.0, max_torque=40.0, joint_name="left_hip_pitch_04"),
-    Actuator(actuator_id=32, nn_id=1, kp=120.0, kd=5.0, max_torque=30.0, joint_name="left_hip_roll_03"),
+    Actuator(actuator_id=32, nn_id=1, kp=120.0, kd=5.0, max_torque=40.0, joint_name="left_hip_roll_03"),
     Actuator(actuator_id=33, nn_id=2, kp=120.0, kd=5.0, max_torque=30.0, joint_name="left_hip_yaw_03"),
     Actuator(actuator_id=34, nn_id=3, kp=300.0, kd=5.0, max_torque=40.0, joint_name="left_knee_04"),
     Actuator(actuator_id=35, nn_id=4, kp=40.0, kd=5.0, max_torque=10.0, joint_name="left_ankle_02"),
     Actuator(actuator_id=41, nn_id=5, kp=300.0, kd=5.0, max_torque=40.0, joint_name="right_hip_pitch_04"),
-    Actuator(actuator_id=42, nn_id=6, kp=120.0, kd=5.0, max_torque=30.0, joint_name="right_hip_roll_03"),
+    Actuator(actuator_id=42, nn_id=6, kp=120.0, kd=5.0, max_torque=40.0, joint_name="right_hip_roll_03"),
     Actuator(actuator_id=43, nn_id=7, kp=120.0, kd=5.0, max_torque=30.0, joint_name="right_hip_yaw_03"),
     Actuator(actuator_id=44, nn_id=8, kp=300.0, kd=5.0, max_torque=40.0, joint_name="right_knee_04"),
     Actuator(actuator_id=45, nn_id=9, kp=40.0, kd=5.0, max_torque=10.0, joint_name="right_ankle_02"),
@@ -45,7 +45,13 @@ ACTUATOR_ID_TO_POLICY_IDX = {actuator.actuator_id: actuator.nn_id for actuator i
 ACTUATOR_IDS = [actuator.actuator_id for actuator in ACTUATOR_LIST]
 
 
-async def simple_walking(model_path: str | Path, default_position: list[float], host: str, port: int) -> None:
+async def simple_walking(
+    model_path: str | Path,
+    default_position: list[float],
+    host: str,
+    port: int,
+    num_seconds: float | None = 10.0,
+) -> None:
     """Runs a simple walking policy.
 
     Args:
@@ -79,7 +85,7 @@ async def simple_walking(model_path: str | Path, default_position: list[float], 
             )
 
         await sim_kos.sim.reset(
-            pos={"x": 0.0, "y": 0.0, "z": 1.15},
+            pos={"x": 0.0, "y": 0.0, "z": 1.25},
             quat={"x": 0.0, "y": 0.0, "z": 0.0, "w": 1.0},
             joints=[
                 {
@@ -90,7 +96,7 @@ async def simple_walking(model_path: str | Path, default_position: list[float], 
             ],
         )
         start_time = time.time()
-        end_time = start_time + 10
+        end_time = None if num_seconds is None else start_time + num_seconds
 
         default = np.array(default_position)
         target_q = np.zeros(10, dtype=np.double)
@@ -109,13 +115,13 @@ async def simple_walking(model_path: str | Path, default_position: list[float], 
             "buffer.1": np.zeros(570).astype(np.float32),
         }
 
-        x_vel_cmd = 0.3
+        x_vel_cmd = 0.5
         y_vel_cmd = 0.0
         yaw_vel_cmd = 0.0
         frequency = 50
 
         start_time = time.time()
-        while time.time() < end_time:
+        while end_time is None or time.time() < end_time:
             loop_start_time = time.time()
 
             response, raw_quat = await asyncio.gather(
@@ -173,6 +179,7 @@ async def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--host", type=str, default="localhost")
     parser.add_argument("--port", type=int, default=50051)
+    parser.add_argument("--num-seconds", type=float, default=None)
     parser.add_argument("--debug", action="store_true")
     args = parser.parse_args()
 
@@ -182,7 +189,7 @@ async def main() -> None:
 
     # Defines the default joint positions for the legs.
     default_position = [0.23, 0.0, 0.0, 0.441, -0.195, -0.23, 0.0, 0.0, -0.441, 0.195]
-    await simple_walking(model_path, default_position, args.host, args.port)
+    await simple_walking(model_path, default_position, args.host, args.port, args.num_seconds)
 
 
 if __name__ == "__main__":
