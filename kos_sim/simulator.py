@@ -313,14 +313,12 @@ class MujocoSimulator:
         qpos[7:] = np.zeros_like(self._data.qpos[7:])
         if joint_pos is not None:
             for joint_name, position in joint_pos.items():
-                print("Resetting joint", joint_name, "to", position)
                 self._data.joint(joint_name).qpos = position
 
         # Resets qvel.
         qvel = np.zeros_like(self._data.qvel)
         if joint_vel is not None:
             for joint_name, velocity in joint_vel.items():
-                print("Resetting joint", joint_name, "to", velocity)
                 self._data.joint(joint_name).qvel = velocity
 
         # Resets qacc.

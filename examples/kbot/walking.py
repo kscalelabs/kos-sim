@@ -10,8 +10,8 @@ from pathlib import Path
 
 import colorlogging
 import numpy as np
-import onnx
 from pykos import KOS
+from kinfer.inference.python import ONNXModel
 from scipy.spatial.transform import Rotation as R
 
 logger = logging.getLogger(__name__)
@@ -64,8 +64,20 @@ async def simple_walking(policy: onnx.ModelProto, default_position: list[float],
         host: The host to connect to.
         port: The port to connect to.
     """
+    assert len(default_position) == len(ACTUATOR_LIST)
     async with KOS(ip=host, port=port) as sim_kos:
-        await sim_kos.sim.reset(initial_state={"qpos": [0.0, 0.0, 1.05, 0.0, 0.0, 0.0, 1.0] + default_position})
+        # await sim_kos.sim.reset(initial_state={"qpos": [0.0, 0.0, 1.05, 0.0, 0.0, 0.0, 1.0] + default_position})
+        await sim_kos.sim.reset(
+            pos={"x": 0.0, "y": 0.0, "z": 1.05},
+            quat={"x": 0.0, "y": 0.0, "z": 0.0, "w": 1.0},
+            joints=[
+                {
+                    "name": actuator.joint_name,
+                    "pos": pos,
+                }
+                for actuator, pos in zip(ACTUATOR_LIST, default_position)
+            ],
+        )
         start_time = time.time()
         end_time = start_time + 10
 

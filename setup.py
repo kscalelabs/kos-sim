@@ -24,6 +24,7 @@ requirements_dev = [
 
 requirements_examples = [
     "scipy",
+    "kinfer",
 ]
 
 
