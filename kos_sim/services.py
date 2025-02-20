@@ -95,10 +95,6 @@ class SimService(sim_pb2_grpc.SimulationServiceServicer):
             if params.HasField("gravity"):
                 logger.debug("Setting gravity to %f", params.gravity)
                 self.simulator._model.opt.gravity[2] = params.gravity
-            if params.HasField("initial_state"):
-                logger.debug("Setting initial state: %s", params.initial_state)
-                qpos = list(params.initial_state.qpos)
-                await self.simulator.reset(qpos)
             return common_pb2.ActionResponse(success=True)
         except Exception as e:
             logger.error("SetParameters failed: %s", e)
