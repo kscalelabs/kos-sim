@@ -28,16 +28,16 @@ class Actuator:
 
 
 ACTUATOR_LIST: list[Actuator] = [
-    Actuator(actuator_id=31, nn_id=0, kp=300.0, kd=5.0, max_torque=60.0, joint_name="left_hip_pitch_04"),
-    Actuator(actuator_id=32, nn_id=1, kp=120.0, kd=5.0, max_torque=40.0, joint_name="left_hip_roll_03"),
-    Actuator(actuator_id=33, nn_id=2, kp=120.0, kd=5.0, max_torque=40.0, joint_name="left_hip_yaw_03"),
-    Actuator(actuator_id=34, nn_id=3, kp=300.0, kd=5.0, max_torque=60.0, joint_name="left_knee_04"),
-    Actuator(actuator_id=35, nn_id=4, kp=40.0, kd=5.0, max_torque=17.0, joint_name="left_ankle_02"),
-    Actuator(actuator_id=41, nn_id=5, kp=300.0, kd=5.0, max_torque=60.0, joint_name="right_hip_pitch_04"),
-    Actuator(actuator_id=42, nn_id=6, kp=120.0, kd=5.0, max_torque=40.0, joint_name="right_hip_roll_03"),
-    Actuator(actuator_id=43, nn_id=7, kp=120.0, kd=5.0, max_torque=40.0, joint_name="right_hip_yaw_03"),
-    Actuator(actuator_id=44, nn_id=8, kp=300.0, kd=5.0, max_torque=60.0, joint_name="right_knee_04"),
-    Actuator(actuator_id=45, nn_id=9, kp=40.0, kd=5.0, max_torque=17.0, joint_name="right_ankle_02"),
+    Actuator(actuator_id=31, nn_id=0, kp=300.0, kd=5.0, max_torque=40.0, joint_name="left_hip_pitch_04"),
+    Actuator(actuator_id=32, nn_id=1, kp=120.0, kd=5.0, max_torque=30.0, joint_name="left_hip_roll_03"),
+    Actuator(actuator_id=33, nn_id=2, kp=120.0, kd=5.0, max_torque=30.0, joint_name="left_hip_yaw_03"),
+    Actuator(actuator_id=34, nn_id=3, kp=300.0, kd=5.0, max_torque=40.0, joint_name="left_knee_04"),
+    Actuator(actuator_id=35, nn_id=4, kp=40.0, kd=5.0, max_torque=10.0, joint_name="left_ankle_02"),
+    Actuator(actuator_id=41, nn_id=5, kp=300.0, kd=5.0, max_torque=40.0, joint_name="right_hip_pitch_04"),
+    Actuator(actuator_id=42, nn_id=6, kp=120.0, kd=5.0, max_torque=30.0, joint_name="right_hip_roll_03"),
+    Actuator(actuator_id=43, nn_id=7, kp=120.0, kd=5.0, max_torque=30.0, joint_name="right_hip_yaw_03"),
+    Actuator(actuator_id=44, nn_id=8, kp=300.0, kd=5.0, max_torque=40.0, joint_name="right_knee_04"),
+    Actuator(actuator_id=45, nn_id=9, kp=40.0, kd=5.0, max_torque=10.0, joint_name="right_ankle_02"),
 ]
 
 ACTUATOR_ID_TO_POLICY_IDX = {actuator.actuator_id: actuator.nn_id for actuator in ACTUATOR_LIST}
@@ -108,6 +108,7 @@ async def simple_walking(model_path: str | Path, default_position: list[float], 
             "projected_gravity.1": np.zeros(3).astype(np.float32),
             "buffer.1": np.zeros(570).astype(np.float32),
         }
+
         x_vel_cmd = 0.3
         y_vel_cmd = 0.0
         yaw_vel_cmd = 0.0
@@ -125,12 +126,10 @@ async def simple_walking(model_path: str | Path, default_position: list[float], 
             velocities = np.array([math.radians(state.velocity) for state in response.states])
             r = R.from_quat([raw_quat.x, raw_quat.y, raw_quat.z, raw_quat.w])
 
-            # Need to apply a transformation from the IMU frame to the current robot frame.
-            # tf = R.from_euler("xyz", [180.0, 0.0, 0.0], degrees=True)
-            # r = tf * r
-
             gvec = r.apply(np.array([0.0, 0.0, -1.0]), inverse=True).astype(np.double)
 
+            # Need to apply a transformation from the IMU frame to the frame
+            # that we used to train the original model.
             gvec[0] = -gvec[0]
             gvec[1] = -gvec[1]
 
