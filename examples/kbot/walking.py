@@ -20,6 +20,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class Actuator:
     actuator_id: int
+    nn_id: int
     kp: float
     kd: float
     max_torque: float
@@ -27,32 +28,21 @@ class Actuator:
 
 
 ACTUATOR_LIST: list[Actuator] = [
-    Actuator(actuator_id=31, kp=300.0, kd=5.0, max_torque=60.0, joint_name="left_hip_pitch_04"),
-    Actuator(actuator_id=32, kp=120.0, kd=5.0, max_torque=40.0, joint_name="left_hip_roll_03"),
-    Actuator(actuator_id=33, kp=120.0, kd=5.0, max_torque=40.0, joint_name="left_hip_yaw_03"),
-    Actuator(actuator_id=34, kp=300.0, kd=5.0, max_torque=60.0, joint_name="left_knee_04"),
-    Actuator(actuator_id=35, kp=40.0, kd=5.0, max_torque=17.0, joint_name="left_ankle_02"),
-    Actuator(actuator_id=41, kp=300.0, kd=5.0, max_torque=60.0, joint_name="right_hip_pitch_04"),
-    Actuator(actuator_id=42, kp=120.0, kd=5.0, max_torque=40.0, joint_name="right_hip_roll_03"),
-    Actuator(actuator_id=43, kp=120.0, kd=5.0, max_torque=40.0, joint_name="right_hip_yaw_03"),
-    Actuator(actuator_id=44, kp=300.0, kd=5.0, max_torque=60.0, joint_name="right_knee_04"),
-    Actuator(actuator_id=45, kp=40.0, kd=5.0, max_torque=17.0, joint_name="right_ankle_02"),
+    Actuator(actuator_id=31, nn_id=0, kp=300.0, kd=5.0, max_torque=60.0, joint_name="left_hip_pitch_04"),
+    Actuator(actuator_id=32, nn_id=1, kp=120.0, kd=5.0, max_torque=40.0, joint_name="left_hip_roll_03"),
+    Actuator(actuator_id=33, nn_id=2, kp=120.0, kd=5.0, max_torque=40.0, joint_name="left_hip_yaw_03"),
+    Actuator(actuator_id=34, nn_id=3, kp=300.0, kd=5.0, max_torque=60.0, joint_name="left_knee_04"),
+    Actuator(actuator_id=35, nn_id=4, kp=40.0, kd=5.0, max_torque=17.0, joint_name="left_ankle_02"),
+    Actuator(actuator_id=41, nn_id=5, kp=300.0, kd=5.0, max_torque=60.0, joint_name="right_hip_pitch_04"),
+    Actuator(actuator_id=42, nn_id=6, kp=120.0, kd=5.0, max_torque=40.0, joint_name="right_hip_roll_03"),
+    Actuator(actuator_id=43, nn_id=7, kp=120.0, kd=5.0, max_torque=40.0, joint_name="right_hip_yaw_03"),
+    Actuator(actuator_id=44, nn_id=8, kp=300.0, kd=5.0, max_torque=60.0, joint_name="right_knee_04"),
+    Actuator(actuator_id=45, nn_id=9, kp=40.0, kd=5.0, max_torque=17.0, joint_name="right_ankle_02"),
 ]
 
-ACTUATOR_IDS = [actuator.actuator_id for actuator in ACTUATOR_LIST]
+ACTUATOR_ID_TO_POLICY_IDX = {actuator.actuator_id: actuator.nn_id for actuator in ACTUATOR_LIST}
 
-ACTUATOR_ID_TO_POLICY_IDX = {
-    31: 0,  # left_hip_pitch_04
-    32: 1,  # left_hip_roll_03
-    33: 2,  # left_hip_yaw_03
-    34: 3,  # left_knee_04
-    35: 4,  # left_ankle_02
-    41: 5,  # right_hip_pitch_04
-    42: 6,  # right_hip_roll_03
-    43: 7,  # right_hip_yaw_03
-    44: 8,  # right_knee_04
-    45: 9,  # right_ankle_02
-}
+ACTUATOR_IDS = [actuator.actuator_id for actuator in ACTUATOR_LIST]
 
 
 async def simple_walking(model_path: str | Path, default_position: list[float], host: str, port: int) -> None:
@@ -73,7 +63,6 @@ async def simple_walking(model_path: str | Path, default_position: list[float], 
     session = ort.InferenceSession(model_path)
 
     # Get input and output details
-    # input_details = [{"name": x.name, "shape": x.shape, "type": x.type} for x in session.get_inputs()]
     output_details = [{"name": x.name, "shape": x.shape, "type": x.type} for x in session.get_outputs()]
 
     def policy(input_data: dict[str, np.ndarray]) -> dict[str, np.ndarray]:
@@ -81,9 +70,16 @@ async def simple_walking(model_path: str | Path, default_position: list[float], 
         return {output_details[i]["name"]: results[i] for i in range(len(output_details))}
 
     async with KOS(ip=host, port=port) as sim_kos:
-        # await sim_kos.sim.reset(initial_state={"qpos": [0.0, 0.0, 1.05, 0.0, 0.0, 0.0, 1.0] + default_position})
+        for actuator in ACTUATOR_LIST:
+            await sim_kos.actuator.configure_actuator(
+                actuator_id=actuator.actuator_id,
+                kp=actuator.kp,
+                kd=actuator.kd,
+                max_torque=actuator.max_torque,
+            )
+
         await sim_kos.sim.reset(
-            pos={"x": 0.0, "y": 0.0, "z": 1.05},
+            pos={"x": 0.0, "y": 0.0, "z": 1.15},
             quat={"x": 0.0, "y": 0.0, "z": 0.0, "w": 1.0},
             joints=[
                 {
@@ -129,10 +125,14 @@ async def simple_walking(model_path: str | Path, default_position: list[float], 
             velocities = np.array([math.radians(state.velocity) for state in response.states])
             r = R.from_quat([raw_quat.x, raw_quat.y, raw_quat.z, raw_quat.w])
 
-            euler_angles = r.as_euler("xyz", degrees=False)
-            print(euler_angles)
+            # Need to apply a transformation from the IMU frame to the current robot frame.
+            # tf = R.from_euler("xyz", [180.0, 0.0, 0.0], degrees=True)
+            # r = tf * r
 
             gvec = r.apply(np.array([0.0, 0.0, -1.0]), inverse=True).astype(np.double)
+
+            gvec[0] = -gvec[0]
+            gvec[1] = -gvec[1]
 
             cur_pos_obs = positions - default
             cur_vel_obs = velocities
