@@ -19,8 +19,8 @@ async def test_client(host: str = "localhost", port: int = 50051) -> None:
     async with KOS(ip=host, port=port) as kos:
         # Reset the simulation.
         await kos.sim.reset(
-            # pos={"x": 0.0, "y": 0.0, "z": 1.5},
-            # quat={"x": 0.0, "y": 0.0, "z": 0.0, "w": 1.0},
+            pos={"x": 0.0, "y": 0.0, "z": 1.5},
+            quat={"x": 0.0, "y": 0.0, "z": 0.0, "w": 1.0},
             joints=[
                 {"name": "left_shoulder_roll_03", "pos": -20.0},
                 {"name": "right_shoulder_roll_03", "pos": 20.0},
