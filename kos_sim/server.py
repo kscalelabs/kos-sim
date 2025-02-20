@@ -21,6 +21,18 @@ from kos_sim.services import ActuatorService, IMUService, SimService
 from kos_sim.simulator import MujocoSimulator
 from kos_sim.utils import get_sim_artifacts_path
 
+# Define the request time logging interceptor
+class TimingInterceptor(grpc.aio.ServerInterceptor):
+    async def intercept_service(self, continuation, handler_call_details):
+        start_time = time.time()  # Capture the start time
+        # Call the next interceptor or handler (this is where the actual request handling occurs)
+        response = await continuation(handler_call_details)
+        end_time = time.time()  # Capture the end time
+        response_time = end_time - start_time  # Calculate the response time
+        logger.debug(f"Request processed in {response_time:.6f} seconds")
+        return response
+
+
 
 class SimulationServer:
     def __init__(
@@ -69,7 +81,7 @@ class SimulationServer:
     async def _grpc_server_loop(self) -> None:
         """Run the async gRPC server."""
         # Create async gRPC server
-        self._server = grpc.aio.server(futures.ThreadPoolExecutor(max_workers=10))
+        self._server = grpc.aio.server(futures.ThreadPoolExecutor(max_workers=10), interceptors=[TimingInterceptor()])
 
         assert self._server is not None
 
