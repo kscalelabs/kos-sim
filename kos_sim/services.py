@@ -30,7 +30,6 @@ class SimService(sim_pb2_grpc.SimulationServiceServicer):
         context: grpc.ServicerContext,
     ) -> common_pb2.ActionResponse:
         """Reset the simulation to initial or specified state."""
-        logger.info("Reset request received")
         try:
             logger.debug("Resetting simulator")
             await self.simulator.reset(
@@ -64,7 +63,6 @@ class SimService(sim_pb2_grpc.SimulationServiceServicer):
         context: grpc.ServicerContext,
     ) -> common_pb2.ActionResponse:  # noqa: N802
         """Pause or unpause the simulation."""
-        logger.info("SetPaused request received: paused=%s", request.paused)
         try:
             return common_pb2.ActionResponse(success=True)
         except Exception as e:
@@ -86,7 +84,6 @@ class SimService(sim_pb2_grpc.SimulationServiceServicer):
         context: grpc.ServicerContext,
     ) -> common_pb2.ActionResponse:
         """Set simulation parameters."""
-        logger.info("SetParameters request received: %s", request)
         try:
             params = request.parameters
             if params.HasField("time_scale"):
@@ -108,7 +105,6 @@ class SimService(sim_pb2_grpc.SimulationServiceServicer):
         context: grpc.ServicerContext,
     ) -> sim_pb2.GetParametersResponse:
         """Get current simulation parameters."""
-        logger.info("GetParameters request received")
         try:
             params = sim_pb2.SimulationParameters(
                 time_scale=self.simulator._dt / self.simulator._model.opt.timestep,
@@ -158,7 +154,6 @@ class ActuatorService(actuator_pb2_grpc.ActuatorServiceServicer):
         context: grpc.ServicerContext,
     ) -> actuator_pb2.GetActuatorsStateResponse:
         """Implements GetActuatorsState by reading from simulator."""
-        logger.info("GetActuatorsState request received")
         ids = request.actuator_ids or list(self.simulator._joint_id_to_name.keys())
         try:
             states = {joint_id: await self.simulator.get_actuator_state(joint_id) for joint_id in ids}
@@ -270,7 +265,6 @@ class IMUService(imu_pb2_grpc.IMUServiceServicer):
         context: grpc.ServicerContext,
     ) -> imu_pb2.EulerAnglesResponse:
         """Implements GetEuler by converting orientation quaternion to Euler angles."""
-        logger.info("GetEuler request received")
         try:
             if self.quat_name is None:
                 raise ValueError("Quaternion name not set")

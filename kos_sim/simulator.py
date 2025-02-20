@@ -102,12 +102,13 @@ class MujocoSimulator:
 
         # Gets the IDs, KPs, and KDs for each joint.
         self._joint_name_to_id = {name: _nn(joint.id) for name, joint in self._metadata.joint_name_to_metadata.items()}
-        self._joint_name_to_kp = {
+        self._joint_name_to_kp: dict[str, float] = {
             name: float(_nn(joint.kp)) for name, joint in self._metadata.joint_name_to_metadata.items()
         }
-        self._joint_name_to_kd = {
+        self._joint_name_to_kd: dict[str, float] = {
             name: float(_nn(joint.kd)) for name, joint in self._metadata.joint_name_to_metadata.items()
         }
+        self._joint_name_to_max_torque: dict[str, float] = {}
 
         # Gets the inverse mapping.
         self._joint_id_to_name = {v: k for k, v in self._joint_name_to_id.items()}
@@ -126,10 +127,10 @@ class MujocoSimulator:
         self._model.opt.o_margin = o_margin
         self._data = mujoco.MjData(self._model)
 
-        model_joint_names = {self._model.joint(i).name for i in range(self._model.njnt)}
-        invalid_joint_names = [name for name in self._joint_name_to_id if name not in model_joint_names]
-        if invalid_joint_names:
-            raise ValueError(f"Joint names {invalid_joint_names} not found in model")
+        # model_joint_names = {self._model.joint(i).name for i in range(self._model.njnt)}
+        # invalid_joint_names = [name for name in self._joint_name_to_id if name not in model_joint_names]
+        # if invalid_joint_names:
+        #     raise ValueError(f"Joint names {invalid_joint_names} not found in model")
 
         logger.info("Joint ID to name: %s", self._joint_id_to_name)
 
@@ -213,6 +214,8 @@ class MujocoSimulator:
                 + kd * (target_command["velocity"] - current_velocity)
                 + target_command["torque"]
             )
+            if (max_torque := self._joint_name_to_max_torque.get(name)) is not None:
+                target_torque = np.clip(target_torque, -max_torque, max_torque)
             logger.debug("Setting ctrl for actuator %s to %f", actuator_id, target_torque)
             self._data.ctrl[actuator_id] = target_torque
 
@@ -288,7 +291,7 @@ class MujocoSimulator:
         if "kd" in configuration:
             self._joint_name_to_kd[joint_name] = configuration["kd"]
         if "max_torque" in configuration:
-            self._model.actuator_gainprm[self._joint_id_to_actuator_id[joint_id], 0] = configuration["max_torque"]
+            self._joint_name_to_max_torque[joint_name] = configuration["max_torque"]
 
     @property
     def sim_time(self) -> float:
@@ -313,14 +316,12 @@ class MujocoSimulator:
         qpos[7:] = np.zeros_like(self._data.qpos[7:])
         if joint_pos is not None:
             for joint_name, position in joint_pos.items():
-                print("Resetting joint", joint_name, "to", position)
                 self._data.joint(joint_name).qpos = position
 
         # Resets qvel.
         qvel = np.zeros_like(self._data.qvel)
         if joint_vel is not None:
             for joint_name, velocity in joint_vel.items():
-                print("Resetting joint", joint_name, "to", velocity)
                 self._data.joint(joint_name).qvel = velocity
 
         # Resets qacc.
