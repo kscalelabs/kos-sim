@@ -10,8 +10,8 @@ from pathlib import Path
 
 import colorlogging
 import numpy as np
+import onnxruntime as ort
 from pykos import KOS
-from kinfer.inference.python import ONNXModel
 from scipy.spatial.transform import Rotation as R
 
 logger = logging.getLogger(__name__)
@@ -55,16 +55,31 @@ ACTUATOR_ID_TO_POLICY_IDX = {
 }
 
 
-async def simple_walking(policy: onnx.ModelProto, default_position: list[float], host: str, port: int) -> None:
+async def simple_walking(model_path: str | Path, default_position: list[float], host: str, port: int) -> None:
     """Runs a simple walking policy.
 
     Args:
-        policy: The policy to use for the walking.
+        model_path: The path to the ONNX model.
         default_position: The default joint positions for the legs.
         host: The host to connect to.
         port: The port to connect to.
     """
     assert len(default_position) == len(ACTUATOR_LIST)
+
+    model_path = Path(model_path)
+    if not model_path.exists():
+        raise FileNotFoundError(f"Model file not found: {model_path}")
+
+    session = ort.InferenceSession(model_path)
+
+    # Get input and output details
+    # input_details = [{"name": x.name, "shape": x.shape, "type": x.type} for x in session.get_inputs()]
+    output_details = [{"name": x.name, "shape": x.shape, "type": x.type} for x in session.get_outputs()]
+
+    def policy(input_data: dict[str, np.ndarray]) -> dict[str, np.ndarray]:
+        results = session.run(None, input_data)
+        return {output_details[i]["name"]: results[i] for i in range(len(output_details))}
+
     async with KOS(ip=host, port=port) as sim_kos:
         # await sim_kos.sim.reset(initial_state={"qpos": [0.0, 0.0, 1.05, 0.0, 0.0, 0.0, 1.0] + default_position})
         await sim_kos.sim.reset(
@@ -107,11 +122,16 @@ async def simple_walking(policy: onnx.ModelProto, default_position: list[float],
             loop_start_time = time.time()
 
             response, raw_quat = await asyncio.gather(
-                sim_kos.actuator.get_actuators_state(ACTUATOR_IDS), sim_kos.imu.get_quaternion()
+                sim_kos.actuator.get_actuators_state(ACTUATOR_IDS),
+                sim_kos.imu.get_quaternion(),
             )
             positions = np.array([math.radians(state.position) for state in response.states])
             velocities = np.array([math.radians(state.velocity) for state in response.states])
             r = R.from_quat([raw_quat.x, raw_quat.y, raw_quat.z, raw_quat.w])
+
+            euler_angles = r.as_euler("xyz", degrees=False)
+            print(euler_angles)
+
             gvec = r.apply(np.array([0.0, 0.0, -1.0]), inverse=True).astype(np.double)
 
             cur_pos_obs = positions - default
@@ -160,13 +180,10 @@ async def main() -> None:
     colorlogging.configure(level=logging.DEBUG if args.debug else logging.INFO)
 
     model_path = Path(__file__).parent / "simple_walking.onnx"
-    if not model_path.exists():
-        raise FileNotFoundError(f"Model file not found: {model_path}")
-    policy = onnx.load(model_path)
 
     # Defines the default joint positions for the legs.
     default_position = [0.23, 0.0, 0.0, 0.441, -0.195, -0.23, 0.0, 0.0, -0.441, 0.195]
-    await simple_walking(policy, default_position, args.host, args.port)
+    await simple_walking(model_path, default_position, args.host, args.port)
 
 
 if __name__ == "__main__":
