@@ -23,5 +23,3 @@ python -m examples.kbot
 ```
 
 You should see the simulated K-Bot move in response to the client commands.
-
-Test
