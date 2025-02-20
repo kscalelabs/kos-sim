@@ -305,18 +305,31 @@ class MujocoSimulator:
         self._next_commands.clear()
 
         mujoco.mj_resetData(self._model, self._data)
-        self._data.qpos[:3] = np.array([0.0, 0.0, self._start_height] if xyz is None else xyz)
-        self._data.qpos[3:7] = np.array([0.0, 0.0, 0.0, 1.0] if quat is None else quat)
-        self._data.qpos[7:] = np.zeros_like(self._data.qpos[7:])
-        self._data.qvel[:] = np.zeros_like(self._data.qvel)
-        self._data.qacc[:] = np.zeros_like(self._data.qacc)
 
-        for joint_name, position in joint_pos.items():
-            self._data.joint(joint_name).qpos = position
+        # Resets qpos.
+        qpos = np.zeros_like(self._data.qpos)
+        qpos[:3] = np.array([0.0, 0.0, self._start_height] if xyz is None else xyz)
+        qpos[3:7] = np.array([0.0, 0.0, 0.0, 1.0] if quat is None else quat)
+        qpos[7:] = np.zeros_like(self._data.qpos[7:])
+        if joint_pos is not None:
+            for joint_name, position in joint_pos.items():
+                print("Resetting joint", joint_name, "to", position)
+                self._data.joint(joint_name).qpos = position
 
-        for joint_name, velocity in joint_vel.items():
-            self._data.joint(joint_name).qvel = velocity
+        # Resets qvel.
+        qvel = np.zeros_like(self._data.qvel)
+        if joint_vel is not None:
+            for joint_name, velocity in joint_vel.items():
+                print("Resetting joint", joint_name, "to", velocity)
+                self._data.joint(joint_name).qvel = velocity
 
+        # Resets qacc.
+        qacc = np.zeros_like(self._data.qacc)
+
+        # Runs one step.
+        self._data.qpos[:] = qpos
+        self._data.qvel[:] = qvel
+        self._data.qacc[:] = qacc
         mujoco.mj_forward(self._model, self._data)
 
     async def close(self) -> None:
@@ -331,3 +344,4 @@ class MujocoSimulator:
     @property
     def timestep(self) -> float:
         return self._model.opt.timestep
+
