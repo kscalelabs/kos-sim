@@ -62,6 +62,7 @@ class SimulationServer:
         self._sleep_time = sleep_time
         self._stop_event = asyncio.Event()
         self._server = None
+        self._step_lock = asyncio.Semaphore(1)
 
     async def _grpc_server_loop(self) -> None:
         """Run the async gRPC server."""
@@ -71,7 +72,7 @@ class SimulationServer:
         assert self._server is not None
 
         # Add our services (these need to be modified to be async as well)
-        actuator_service = ActuatorService(self.simulator)
+        actuator_service = ActuatorService(self.simulator, self._step_lock)
         imu_service = IMUService(self.simulator)
         sim_service = SimService(self.simulator)
 
@@ -94,8 +95,9 @@ class SimulationServer:
             while not self._stop_event.is_set():
                 while self.simulator._sim_time < time.time():
                     # Run one control loop.
-                    for _ in range(self.simulator._sim_decimation):
-                        await self.simulator.step()
+                    async with self._step_lock:
+                        for _ in range(self.simulator._sim_decimation):
+                            await self.simulator.step()
                     await asyncio.sleep(self._sleep_time)
 
                 await self.simulator.render()

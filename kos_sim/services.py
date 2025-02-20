@@ -1,5 +1,6 @@
 """Service implementations for MuJoCo simulation."""
 
+import asyncio
 import math
 
 import grpc
@@ -122,8 +123,9 @@ class SimService(sim_pb2_grpc.SimulationServiceServicer):
 class ActuatorService(actuator_pb2_grpc.ActuatorServiceServicer):
     """Implementation of ActuatorService that wraps a MuJoCo simulation."""
 
-    def __init__(self, simulator: MujocoSimulator) -> None:
+    def __init__(self, simulator: MujocoSimulator, step_lock: asyncio.Semaphore) -> None:
         self.simulator = simulator
+        self.step_lock = step_lock
 
     async def CommandActuators(  # noqa: N802
         self,
@@ -141,7 +143,8 @@ class ActuatorService(actuator_pb2_grpc.ActuatorServiceServicer):
                 }
                 for cmd in request.commands
             }
-            await self.simulator.command_actuators(commands)
+            async with self.step_lock:
+                await self.simulator.command_actuators(commands)
             return actuator_pb2.CommandActuatorsResponse()
         except Exception as e:
             context.set_code(grpc.StatusCode.INTERNAL)
