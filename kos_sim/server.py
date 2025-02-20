@@ -97,7 +97,6 @@ class SimulationServer:
                     await self.simulator.render()
                     num_renders += 1
 
-
                 # Sleep until the next control update.
                 current_time = time.time()
                 if current_time < self.simulator._sim_time:
@@ -199,18 +198,32 @@ async def serve(
         joint_name_to_metadata: dict
         control_frequency: float = 50.0
 
+    # pfb30 move this onto the model metadata
     model_metadata = ModelInfo(
         joint_name_to_metadata={
-            "left_hip_pitch_04": JointMetadata(id=31, kp=300.0, kd=5.0),
-            "left_hip_roll_03": JointMetadata(id=32, kp=120.0, kd=5.0),
-            "left_hip_yaw_03": JointMetadata(id=33, kp=120.0, kd=5.0),
-            "left_knee_04": JointMetadata(id=34, kp=300.0, kd=5.0),
-            "left_ankle_02": JointMetadata(id=35, kp=40.0, kd=5.0),
-            "right_hip_pitch_04": JointMetadata(id=41, kp=300.0, kd=5.0),
-            "right_hip_roll_03": JointMetadata(id=42, kp=120.0, kd=5.0),
-            "right_hip_yaw_03": JointMetadata(id=43, kp=120.0, kd=5.0),
-            "right_knee_04": JointMetadata(id=44, kp=300.0, kd=5.0),
-            "right_ankle_02": JointMetadata(id=45, kp=40.0, kd=5.0),
+            "left_shoulder_pitch_03": JointMetadata(id=11, kp=85.0, kd=2.0),
+            "left_shoulder_roll_03": JointMetadata(id=12, kp=85.0, kd=2.0),
+            "left_shoulder_yaw_02": JointMetadata(id=13, kp=80.0, kd=1.0),
+            "left_elbow_02": JointMetadata(id=14, kp=80.0, kd=1.0),
+            "left_wrist_02": JointMetadata(id=15, kp=80.0, kd=1.0),
+
+            "right_shoulder_pitch_03": JointMetadata(id=21, kp=85.0, kd=2.0),
+            "right_shoulder_roll_03": JointMetadata(id=22, kp=85.0, kd=2.0),
+            "right_shoulder_yaw_02": JointMetadata(id=23, kp=80.0, kd=1.0),
+            "right_elbow_02": JointMetadata(id=24, kp=80.0, kd=1.0),
+            "right_wrist_02": JointMetadata(id=25, kp=80.0, kd=1.0),
+
+            "left_hip_pitch_04": JointMetadata(id=31, kp=100.0, kd=7.0),
+            "left_hip_roll_03": JointMetadata(id=32, kp=85.0, kd=2.0),
+            "left_hip_yaw_03": JointMetadata(id=33, kp=85.0, kd=2.0),
+            "left_knee_04": JointMetadata(id=34, kp=100.0, kd=7.0),
+            "left_ankle_02": JointMetadata(id=35, kp=80.0, kd=1.0),
+
+            "right_hip_pitch_04": JointMetadata(id=41, kp=100.0, kd=7.0),
+            "right_hip_roll_03": JointMetadata(id=42, kp=85.0, kd=2.0),
+            "right_hip_yaw_03": JointMetadata(id=43, kp=85.0, kd=2.0),
+            "right_knee_04": JointMetadata(id=44, kp=100.0, kd=7.0),
+            "right_ankle_02": JointMetadata(id=45, kp=80.0, kd=1.0),
         }
     )
 

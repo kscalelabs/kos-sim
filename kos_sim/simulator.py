@@ -190,6 +190,8 @@ class MujocoSimulator:
         self._current_commands: dict[str, ActuatorCommand] = {
             name: {"position": 0.0, "velocity": 0.0, "torque": 0.0} for name in self._joint_name_to_id
         }
+        # pfb30
+        self._current_commands = {}
         self._next_commands: dict[str, tuple[ActuatorCommand, float]] = {}
 
     async def step(self) -> None:

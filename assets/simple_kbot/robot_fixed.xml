@@ -49,7 +49,7 @@
     <body name="root" pos="0 0 0" quat="1 0 0 0">
       <camera name="tracking_camera" mode="track" pos="0.0 -2.0 1.0" quat="0.7071 0.3827 0.0 0.0" fovy="90.0" />
         <freejoint name="floating_base" />
-        <site name="imu_site" size="0.01" pos="0.039989396 -0.12791044000000001 -2.6794896579307448e-11" />
+        <site name="imu_site" size="0.01" pos="0.039989396 -0.12791044000000001 -2.6794896579307448e-11"/>
         <body name="body1-part" quat="0.000563312 0.000562864 0.706825 0.707388">
         <inertial pos="-0.000194676 -0.209193 -6.5933e-05" quat="0.707026 0.707186 0.000991344 0.000198047" mass="16.5406" diaginertia="1.14646 0.609236 0.557347"/>
         <geom name="body1-part.collision" type="mesh" rgba="1 1 1 1" mesh="body1-part.collision"/>
