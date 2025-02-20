@@ -66,6 +66,7 @@ class MujocoSimulator:
         gravity: bool = True,
         render: bool = True,
         suspended: bool = False,
+        start_height: float = 1.0,
         command_delay_min: float = 0.0,
         command_delay_max: float = 0.0,
         pd_update_frequency: float = 100.0,
@@ -134,22 +135,15 @@ class MujocoSimulator:
 
         self._gravity = self._gravity
         self._suspended = self._suspended
-        self._initial_pos = None
-        self._initial_quat = None
+        self._start_height = start_height
 
         if not self._gravity:
             self._model.opt.gravity[2] = 0.0
 
-        # If suspended, store initial position and orientation
-        if self._suspended:
-            # Find the free joint that controls base position and orientation
-            for i in range(self._model.njnt):
-                if self._model.jnt_type[i] == mujoco.mjtJoint.mjJNT_FREE:
-                    self._initial_pos = self._data.qpos[i : i + 3].copy()  # xyz position
-                    self._initial_quat = self._data.qpos[i + 3 : i + 7].copy()  # quaternion
-                    break
-
         # Initialize velocities and accelerations to zero
+        self._data.qpos[:3] = np.array([0.0, 0.0, self._start_height])
+        self._data.qpos[3:7] = np.array([0.0, 0.0, 0.0, 1.0])
+        self._data.qpos[7:] = np.zeros_like(self._data.qpos[7:])
         self._data.qvel = np.zeros_like(self._data.qvel)
         self._data.qacc = np.zeros_like(self._data.qacc)
 
@@ -300,15 +294,42 @@ class MujocoSimulator:
     def sim_time(self) -> float:
         return self._sim_time
 
-    async def reset(self, qpos: list[float] | None = None) -> None:
+    async def reset(
+        self,
+        xyz: tuple[float, float, float] | None = None,
+        quat: tuple[float, float, float, float] | None = None,
+        joint_pos: dict[str, float] | None = None,
+        joint_vel: dict[str, float] | None = None,
+    ) -> None:
         """Reset simulation to specified or default state."""
         self._next_commands.clear()
 
         mujoco.mj_resetData(self._model, self._data)
-        if qpos is not None:
-            self._data.qpos[: len(qpos)] = qpos
-        self._data.qvel[:] = np.zeros_like(self._data.qvel)
-        self._data.qacc[:] = np.zeros_like(self._data.qacc)
+
+        # Resets qpos.
+        qpos = np.zeros_like(self._data.qpos)
+        qpos[:3] = np.array([0.0, 0.0, self._start_height] if xyz is None else xyz)
+        qpos[3:7] = np.array([0.0, 0.0, 0.0, 1.0] if quat is None else quat)
+        qpos[7:] = np.zeros_like(self._data.qpos[7:])
+        if joint_pos is not None:
+            for joint_name, position in joint_pos.items():
+                print("Resetting joint", joint_name, "to", position)
+                self._data.joint(joint_name).qpos = position
+
+        # Resets qvel.
+        qvel = np.zeros_like(self._data.qvel)
+        if joint_vel is not None:
+            for joint_name, velocity in joint_vel.items():
+                print("Resetting joint", joint_name, "to", velocity)
+                self._data.joint(joint_name).qvel = velocity
+
+        # Resets qacc.
+        qacc = np.zeros_like(self._data.qacc)
+
+        # Runs one step.
+        self._data.qpos[:] = qpos
+        self._data.qvel[:] = qvel
+        self._data.qacc[:] = qacc
         mujoco.mj_forward(self._model, self._data)
 
     async def close(self) -> None:

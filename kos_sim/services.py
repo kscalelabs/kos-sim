@@ -32,13 +32,25 @@ class SimService(sim_pb2_grpc.SimulationServiceServicer):
         """Reset the simulation to initial or specified state."""
         logger.info("Reset request received")
         try:
-            if request.HasField("initial_state"):
-                qpos = list(request.initial_state.qpos)
-                logger.debug("Resetting with qpos: %s", qpos)
-                await self.simulator.reset(qpos=qpos)
-            else:
-                logger.debug("Resetting to default state")
-                await self.simulator.reset()
+            logger.debug("Resetting simulator")
+            await self.simulator.reset(
+                xyz=None if request.HasField("pos") is None else (request.pos.x, request.pos.y, request.pos.z),
+                quat=(
+                    None
+                    if request.HasField("quat") is None
+                    else (request.quat.w, request.quat.x, request.quat.y, request.quat.z)
+                ),
+                joint_pos=(
+                    None
+                    if request.joints is None
+                    else {joint.name: joint.pos for joint in request.joints.values if joint.HasField("pos")}
+                ),
+                joint_vel=(
+                    None
+                    if request.joints is None
+                    else {joint.name: joint.vel for joint in request.joints.values if joint.HasField("vel")}
+                ),
+            )
             return common_pb2.ActionResponse(success=True)
         except Exception as e:
             logger.error("Reset failed: %s", e)
@@ -83,10 +95,6 @@ class SimService(sim_pb2_grpc.SimulationServiceServicer):
             if params.HasField("gravity"):
                 logger.debug("Setting gravity to %f", params.gravity)
                 self.simulator._model.opt.gravity[2] = params.gravity
-            if params.HasField("initial_state"):
-                logger.debug("Setting initial state: %s", params.initial_state)
-                qpos = list(params.initial_state.qpos)
-                await self.simulator.reset(qpos)
             return common_pb2.ActionResponse(success=True)
         except Exception as e:
             logger.error("SetParameters failed: %s", e)

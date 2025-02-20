@@ -46,8 +46,6 @@ ACTUATOR_LIST: list[Actuator] = [
 
 
 async def stand_up(kos: KOS) -> None:
-    """Execute stand-up sequence from prone position."""
-
     await kos.actuator.command_actuators(
         [
             {"actuator_id": 12, "position": -90.0},
