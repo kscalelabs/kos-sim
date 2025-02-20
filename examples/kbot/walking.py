@@ -59,6 +59,7 @@ async def simple_walking(
         default_position: The default joint positions for the legs.
         host: The host to connect to.
         port: The port to connect to.
+        num_seconds: The number of seconds to run the policy for.
     """
     assert len(default_position) == len(ACTUATOR_LIST)
 
