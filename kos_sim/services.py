@@ -163,7 +163,6 @@ class ActuatorService(actuator_pb2_grpc.ActuatorServiceServicer):
                         actuator_id=joint_id,
                         position=math.degrees(state.position),
                         velocity=math.degrees(state.velocity),
-                        torque=state.effort,
                         online=True,
                     )
                     for joint_id, state in states.items()
