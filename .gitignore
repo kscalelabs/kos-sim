@@ -26,5 +26,4 @@ ref/
 .kos-sim/
 
 # env
-venv/
 .venv/
