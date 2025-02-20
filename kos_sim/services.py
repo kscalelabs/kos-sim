@@ -32,25 +32,30 @@ class SimService(sim_pb2_grpc.SimulationServiceServicer):
         """Reset the simulation to initial or specified state."""
         logger.info("Reset request received")
         try:
-            logger.debug("Resetting simulator")
-            await self.simulator.reset(
-                xyz=None if request.HasField("pos") is None else (request.pos.x, request.pos.y, request.pos.z),
-                quat=(
-                    None
-                    if request.HasField("quat") is None
-                    else (request.quat.w, request.quat.x, request.quat.y, request.quat.z)
-                ),
-                joint_pos=(
-                    None
-                    if request.joints is None
-                    else {joint.name: joint.pos for joint in request.joints.values if joint.HasField("pos")}
-                ),
-                joint_vel=(
-                    None
-                    if request.joints is None
-                    else {joint.name: joint.vel for joint in request.joints.values if joint.HasField("vel")}
-                ),
-            )
+            if request.HasField("initial_state"):
+                qpos = list(request.initial_state.qpos)
+                logger.debug("Resetting with qpos: %s", qpos)
+                await self.simulator.reset(
+                    xyz=None if request.HasField("pos") is None else (request.pos.x, request.pos.y, request.pos.z),
+                    quat=(
+                        None
+                        if request.HasField("quat") is None
+                        else (request.quat.w, request.quat.x, request.quat.y, request.quat.z)
+                    ),
+                    joint_pos=(
+                        None
+                        if request.joints is None
+                        else {joint.name: joint.pos for joint in request.joints.values if joint.HasField("pos")}
+                    ),
+                    joint_vel=(
+                        None
+                        if request.joints is None
+                        else {joint.name: joint.vel for joint in request.joints.values if joint.HasField("vel")}
+                    ),
+                )
+            else:
+                logger.debug("Resetting to default state")
+                await self.simulator.reset()
             return common_pb2.ActionResponse(success=True)
         except Exception as e:
             logger.error("Reset failed: %s", e)
