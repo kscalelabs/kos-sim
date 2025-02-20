@@ -33,6 +33,7 @@ class SimulationServer:
         gravity: bool = True,
         render: bool = True,
         suspended: bool = False,
+        start_height: float = 1.5,
         command_delay_min: float = 0.0,
         command_delay_max: float = 0.0,
         joint_pos_delta_noise: float = 0.0,
@@ -48,6 +49,7 @@ class SimulationServer:
             gravity=gravity,
             render=render,
             suspended=suspended,
+            start_height=start_height,
             command_delay_min=command_delay_min,
             command_delay_max=command_delay_max,
             joint_pos_delta_noise=joint_pos_delta_noise,
@@ -157,6 +159,7 @@ async def serve(
     gravity: bool = True,
     render: bool = True,
     suspended: bool = False,
+    start_height: float = 1.5,
     command_delay_min: float = 0.0,
     command_delay_max: float = 0.0,
     joint_pos_delta_noise: float = 0.0,
@@ -186,6 +189,7 @@ async def serve(
         gravity=gravity,
         render=render,
         suspended=suspended,
+        start_height=start_height,
         command_delay_min=command_delay_min,
         command_delay_max=command_delay_max,
         joint_pos_delta_noise=joint_pos_delta_noise,
@@ -207,6 +211,7 @@ async def run_server() -> None:
     parser.add_argument("--suspended", action="store_true", help="Suspended simulation")
     parser.add_argument("--command-delay-min", type=float, default=0.0, help="Minimum command delay")
     parser.add_argument("--command-delay-max", type=float, default=0.0, help="Maximum command delay")
+    parser.add_argument("--start-height", type=float, default=1.5, help="Start height")
     parser.add_argument("--joint-pos-delta-noise", type=float, default=0.0, help="Joint position delta noise (degrees)")
     parser.add_argument("--joint-pos-noise", type=float, default=0.0, help="Joint position noise (degrees)")
     parser.add_argument("--joint-vel-noise", type=float, default=0.0, help="Joint velocity noise (degrees/second)")
@@ -223,6 +228,7 @@ async def run_server() -> None:
     gravity = not args.no_gravity
     render = not args.no_render
     suspended = args.suspended
+    start_height = args.start_height
     command_delay_min = args.command_delay_min
     command_delay_max = args.command_delay_max
     joint_pos_delta_noise = args.joint_pos_delta_noise
@@ -236,6 +242,7 @@ async def run_server() -> None:
     logger.info("Gravity: %s", gravity)
     logger.info("Render: %s", render)
     logger.info("Suspended: %s", suspended)
+    logger.info("Start height: %f", start_height)
     logger.info("Command delay min: %f", command_delay_min)
     logger.info("Command delay max: %f", command_delay_max)
     logger.info("Joint pos delta noise: %f", joint_pos_delta_noise)
@@ -251,6 +258,7 @@ async def run_server() -> None:
         gravity=gravity,
         render=render,
         suspended=suspended,
+        start_height=start_height,
         command_delay_min=command_delay_min,
         command_delay_max=command_delay_max,
         joint_pos_delta_noise=joint_pos_delta_noise,

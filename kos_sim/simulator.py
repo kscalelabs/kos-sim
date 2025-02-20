@@ -67,7 +67,7 @@ class MujocoSimulator:
         gravity: bool = True,
         render: bool = True,
         suspended: bool = False,
-        start_height: float = 1.0,
+        start_height: float = 1.5,
         command_delay_min: float = 0.0,
         command_delay_max: float = 0.0,
         joint_pos_delta_noise: float = 0.0,
@@ -89,6 +89,7 @@ class MujocoSimulator:
         self._gravity = gravity
         self._render = render
         self._suspended = suspended
+        self._start_height = start_height
         self._command_delay_min = command_delay_min
         self._command_delay_max = command_delay_max
         self._joint_pos_delta_noise = math.radians(joint_pos_delta_noise)
@@ -146,10 +147,6 @@ class MujocoSimulator:
         #     raise ValueError(f"Joint names {invalid_joint_names} not found in model")
 
         logger.info("Joint ID to name: %s", self._joint_id_to_name)
-
-        self._gravity = self._gravity
-        self._suspended = self._suspended
-        self._start_height = start_height
 
         if not self._gravity:
             self._model.opt.gravity[2] = 0.0
@@ -238,8 +235,8 @@ class MujocoSimulator:
             # Find the root joint (floating_base)
             for i in range(self._model.njnt):
                 if self._model.jnt_type[i] == mujoco.mjtJoint.mjJNT_FREE:
-                    self._data.qpos[i : i + 7] = self._model.keyframe("default").qpos[i : i + 7]
-                    self._data.qvel[i : i + 6] = 0
+                    self._data.qpos[i : i + 7] = [0.0, 0.0, self._start_height, 0.0, 0.0, 0.0, 1.0]
+                    self._data.qvel[i : i + 6] = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
                     break
 
         return self._data
