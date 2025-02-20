@@ -35,6 +35,9 @@ class SimulationServer:
         suspended: bool = False,
         command_delay_min: float = 0.0,
         command_delay_max: float = 0.0,
+        joint_pos_delta_noise: float = 0.0,
+        joint_pos_noise: float = 0.0,
+        joint_vel_noise: float = 0.0,
         sleep_time: float = 1e-6,
         mujoco_scene: str = "smooth",
     ) -> None:
@@ -47,6 +50,9 @@ class SimulationServer:
             suspended=suspended,
             command_delay_min=command_delay_min,
             command_delay_max=command_delay_max,
+            joint_pos_delta_noise=joint_pos_delta_noise,
+            joint_pos_noise=joint_pos_noise,
+            joint_vel_noise=joint_vel_noise,
             mujoco_scene=mujoco_scene,
         )
         self.host = host
@@ -153,6 +159,9 @@ async def serve(
     suspended: bool = False,
     command_delay_min: float = 0.0,
     command_delay_max: float = 0.0,
+    joint_pos_delta_noise: float = 0.0,
+    joint_pos_noise: float = 0.0,
+    joint_vel_noise: float = 0.0,
     mujoco_scene: str = "smooth",
 ) -> None:
     async with K() as api:
@@ -179,6 +188,9 @@ async def serve(
         suspended=suspended,
         command_delay_min=command_delay_min,
         command_delay_max=command_delay_max,
+        joint_pos_delta_noise=joint_pos_delta_noise,
+        joint_pos_noise=joint_pos_noise,
+        joint_vel_noise=joint_vel_noise,
         mujoco_scene=mujoco_scene,
     )
     await server.start()
@@ -195,6 +207,9 @@ async def run_server() -> None:
     parser.add_argument("--suspended", action="store_true", help="Suspended simulation")
     parser.add_argument("--command-delay-min", type=float, default=0.0, help="Minimum command delay")
     parser.add_argument("--command-delay-max", type=float, default=0.0, help="Maximum command delay")
+    parser.add_argument("--joint-pos-delta-noise", type=float, default=0.0, help="Joint position delta noise, in degrees")
+    parser.add_argument("--joint-pos-noise", type=float, default=0.0, help="Joint position noise, in degrees")
+    parser.add_argument("--joint-vel-noise", type=float, default=0.0, help="Joint velocity noise, in degrees/second")
     parser.add_argument("--scene", choices=list_scenes(), default="smooth", help="Mujoco scene to use")
     parser.add_argument("--debug", action="store_true", help="Enable debug logging")
     args = parser.parse_args()
@@ -210,6 +225,9 @@ async def run_server() -> None:
     suspended = args.suspended
     command_delay_min = args.command_delay_min
     command_delay_max = args.command_delay_max
+    joint_pos_delta_noise = args.joint_pos_delta_noise
+    joint_pos_noise = args.joint_pos_noise
+    joint_vel_noise = args.joint_vel_noise
     mujoco_scene = args.scene
 
     logger.info("Model name: %s", model_name)
@@ -220,6 +238,9 @@ async def run_server() -> None:
     logger.info("Suspended: %s", suspended)
     logger.info("Command delay min: %f", command_delay_min)
     logger.info("Command delay max: %f", command_delay_max)
+    logger.info("Joint pos delta noise: %f", joint_pos_delta_noise)
+    logger.info("Joint pos noise: %f", joint_pos_noise)
+    logger.info("Joint vel noise: %f", joint_vel_noise)
     logger.info("Mujoco scene: %s", mujoco_scene)
 
     await serve(
@@ -232,6 +253,9 @@ async def run_server() -> None:
         suspended=suspended,
         command_delay_min=command_delay_min,
         command_delay_max=command_delay_max,
+        joint_pos_delta_noise=joint_pos_delta_noise,
+        joint_pos_noise=joint_pos_noise,
+        joint_vel_noise=joint_vel_noise,
         mujoco_scene=mujoco_scene,
     )
 

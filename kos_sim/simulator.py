@@ -1,5 +1,7 @@
 """Wrapper around MuJoCo simulation."""
 
+import math
+import random
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -34,7 +36,6 @@ class ConfigureActuatorRequest(TypedDict):
 class ActuatorState:
     position: float
     velocity: float
-    effort: float | None = None
 
 
 class ActuatorCommand(TypedDict):
@@ -69,6 +70,9 @@ class MujocoSimulator:
         start_height: float = 1.0,
         command_delay_min: float = 0.0,
         command_delay_max: float = 0.0,
+        joint_pos_delta_noise: float = 0.0,
+        joint_pos_noise: float = 0.0,
+        joint_vel_noise: float = 0.0,
         pd_update_frequency: float = 100.0,
         mujoco_scene: str = "smooth",
         integrator: str = "implicitfast",
@@ -87,6 +91,9 @@ class MujocoSimulator:
         self._suspended = suspended
         self._command_delay_min = command_delay_min
         self._command_delay_max = command_delay_max
+        self._joint_pos_delta_noise = math.radians(joint_pos_delta_noise)
+        self._joint_pos_noise = math.radians(joint_pos_noise)
+        self._joint_vel_noise = math.radians(joint_vel_noise)
         self._update_pd_delta = 1.0 / pd_update_frequency
 
         # Gets the sim decimation.
@@ -114,6 +121,12 @@ class MujocoSimulator:
         self._joint_id_to_name = {v: k for k, v in self._joint_name_to_id.items()}
         if len(self._joint_name_to_id) != len(self._joint_id_to_name):
             raise ValueError("Joint IDs are not unique!")
+
+        # Chooses some random deltas for the joint positions.
+        self._joint_name_to_pos_delta = {
+            name: random.uniform(-self._joint_pos_delta_noise, self._joint_pos_delta_noise)
+            for name in self._joint_name_to_id
+        }
 
         # Load MuJoCo model and initialize data
         logger.info("Loading model from %s", model_path)
@@ -252,9 +265,10 @@ class MujocoSimulator:
         joint_data = self._data.joint(joint_name)
 
         return ActuatorState(
-            position=float(joint_data.qpos),
-            velocity=float(joint_data.qvel),
-            # effort=float(joint_data.qfrc_ext),
+            position=float(joint_data.qpos)
+            + self._joint_name_to_pos_delta[joint_name]
+            + random.uniform(-self._joint_pos_noise, self._joint_pos_noise),
+            velocity=float(joint_data.qvel) + random.uniform(-self._joint_vel_noise, self._joint_vel_noise),
         )
 
     async def command_actuators(self, commands: dict[int, ActuatorCommand]) -> None:
