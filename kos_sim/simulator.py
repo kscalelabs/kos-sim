@@ -344,4 +344,3 @@ class MujocoSimulator:
     @property
     def timestep(self) -> float:
         return self._model.opt.timestep
-
