@@ -81,6 +81,7 @@ class MujocoSimulator:
         tolerance: float = 0.0,
         ls_tolerance: float = 0.0,
         o_margin: float = 0.01,
+        render_decimation: int = 1,
     ) -> None:
         # Stores parameters.
         self._model_path = model_path
@@ -88,6 +89,7 @@ class MujocoSimulator:
         self._dt = dt
         self._gravity = gravity
         self._render = render
+        self._render_decimation = render_decimation
         self._suspended = suspended
         self._start_height = start_height
         self._command_delay_min = command_delay_min
