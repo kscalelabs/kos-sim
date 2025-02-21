@@ -28,16 +28,16 @@ class Actuator:
 
 
 ACTUATOR_LIST: list[Actuator] = [
-    Actuator(actuator_id=31, nn_id=0, kp=300.0, kd=5.0, max_torque=70.0, joint_name="left_hip_pitch_04"),
-    Actuator(actuator_id=32, nn_id=1, kp=120.0, kd=5.0, max_torque=50.0, joint_name="left_hip_roll_03"),
-    Actuator(actuator_id=33, nn_id=2, kp=120.0, kd=5.0, max_torque=50.0, joint_name="left_hip_yaw_03"),
-    Actuator(actuator_id=34, nn_id=3, kp=300.0, kd=5.0, max_torque=70.0, joint_name="left_knee_04"),
-    Actuator(actuator_id=35, nn_id=4, kp=40.0, kd=5.0, max_torque=20.0, joint_name="left_ankle_02"),
-    Actuator(actuator_id=41, nn_id=5, kp=300.0, kd=5.0, max_torque=70.0, joint_name="right_hip_pitch_04"),
-    Actuator(actuator_id=42, nn_id=6, kp=120.0, kd=5.0, max_torque=50.0, joint_name="right_hip_roll_03"),
-    Actuator(actuator_id=43, nn_id=7, kp=120.0, kd=5.0, max_torque=50.0, joint_name="right_hip_yaw_03"),
-    Actuator(actuator_id=44, nn_id=8, kp=300.0, kd=5.0, max_torque=70.0, joint_name="right_knee_04"),
-    Actuator(actuator_id=45, nn_id=9, kp=40.0, kd=5.0, max_torque=20.0, joint_name="right_ankle_02"),
+    Actuator(actuator_id=31, nn_id=0, kp=300.0, kd=5.0, max_torque=40.0, joint_name="left_hip_pitch_04"),
+    Actuator(actuator_id=32, nn_id=1, kp=120.0, kd=5.0, max_torque=30.0, joint_name="left_hip_roll_03"),
+    Actuator(actuator_id=33, nn_id=2, kp=120.0, kd=5.0, max_torque=30.0, joint_name="left_hip_yaw_03"),
+    Actuator(actuator_id=34, nn_id=3, kp=300.0, kd=5.0, max_torque=40.0, joint_name="left_knee_04"),
+    Actuator(actuator_id=35, nn_id=4, kp=40.0, kd=5.0, max_torque=10.0, joint_name="left_ankle_02"),
+    Actuator(actuator_id=41, nn_id=5, kp=300.0, kd=5.0, max_torque=40.0, joint_name="right_hip_pitch_04"),
+    Actuator(actuator_id=42, nn_id=6, kp=120.0, kd=5.0, max_torque=30.0, joint_name="right_hip_roll_03"),
+    Actuator(actuator_id=43, nn_id=7, kp=120.0, kd=5.0, max_torque=30.0, joint_name="right_hip_yaw_03"),
+    Actuator(actuator_id=44, nn_id=8, kp=300.0, kd=5.0, max_torque=40.0, joint_name="right_knee_04"),
+    Actuator(actuator_id=45, nn_id=9, kp=40.0, kd=5.0, max_torque=10.0, joint_name="right_ankle_02"),
 ]
 
 ACTUATOR_ID_TO_POLICY_IDX = {actuator.actuator_id: actuator.nn_id for actuator in ACTUATOR_LIST}
@@ -122,9 +122,9 @@ async def simple_walking(
         frequency = 50
 
         start_time = time.time()
-        while end_time is None or time.time() < end_time:
-            loop_start_time = time.time()
+        next_time = start_time + 1 / frequency
 
+        while end_time is None or time.time() < end_time:
             response, raw_quat = await asyncio.gather(
                 sim_kos.actuator.get_actuators_state(ACTUATOR_IDS),
                 sim_kos.imu.get_quaternion(),
@@ -168,15 +168,9 @@ async def simple_walking(
                 command_deg = math.degrees(raw_value)
                 commands.append({"actuator_id": actuator_id, "position": command_deg})
 
-            # Wait 10 ms
-            await asyncio.sleep(0.005)
-
             await sim_kos.actuator.command_actuators(commands)
-
-            waiting_time = 1 / frequency  # 20 ms
-            loop_end_time = time.time()
-            sleep_time = max(0, waiting_time - (loop_end_time - loop_start_time))
-            await asyncio.sleep(sleep_time)
+            await asyncio.sleep(max(0, next_time - time.time()))
+            next_time += 1 / frequency
 
 
 async def main() -> None:
