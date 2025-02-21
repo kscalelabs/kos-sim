@@ -41,6 +41,7 @@ class SimulationServer:
         joint_vel_noise: float = 0.0,
         sleep_time: float = 1e-6,
         mujoco_scene: str = "smooth",
+        camera: str | None = None,
     ) -> None:
         self.simulator = MujocoSimulator(
             model_path=model_path,
@@ -56,6 +57,7 @@ class SimulationServer:
             joint_pos_noise=joint_pos_noise,
             joint_vel_noise=joint_vel_noise,
             mujoco_scene=mujoco_scene,
+            camera=camera,
         )
         self.host = host
         self.port = port
@@ -168,6 +170,7 @@ async def serve(
     joint_pos_noise: float = 0.0,
     joint_vel_noise: float = 0.0,
     mujoco_scene: str = "smooth",
+    camera: str | None = None,
 ) -> None:
     async with K() as api:
         model_dir, model_metadata = await asyncio.gather(
@@ -198,6 +201,7 @@ async def serve(
         joint_pos_noise=joint_pos_noise,
         joint_vel_noise=joint_vel_noise,
         mujoco_scene=mujoco_scene,
+        camera=camera,
     )
     await server.start()
 
@@ -218,6 +222,7 @@ async def run_server() -> None:
     parser.add_argument("--joint-pos-noise", type=float, default=0.0, help="Joint position noise (degrees)")
     parser.add_argument("--joint-vel-noise", type=float, default=0.0, help="Joint velocity noise (degrees/second)")
     parser.add_argument("--scene", choices=list_scenes(), default="smooth", help="Mujoco scene to use")
+    parser.add_argument("--camera", type=str, default=None, help="Camera to use")
     parser.add_argument("--debug", action="store_true", help="Enable debug logging")
     args = parser.parse_args()
 
@@ -237,6 +242,7 @@ async def run_server() -> None:
     joint_pos_noise = args.joint_pos_noise
     joint_vel_noise = args.joint_vel_noise
     mujoco_scene = args.scene
+    camera = args.camera
 
     logger.info("Model name: %s", model_name)
     logger.info("Port: %d", port)
@@ -251,6 +257,7 @@ async def run_server() -> None:
     logger.info("Joint pos noise: %f", joint_pos_noise)
     logger.info("Joint vel noise: %f", joint_vel_noise)
     logger.info("Mujoco scene: %s", mujoco_scene)
+    logger.info("Camera: %s", camera)
 
     await serve(
         model_name=model_name,
@@ -267,6 +274,7 @@ async def run_server() -> None:
         joint_pos_noise=joint_pos_noise,
         joint_vel_noise=joint_vel_noise,
         mujoco_scene=mujoco_scene,
+        camera=camera,
     )
 
 
