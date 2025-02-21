@@ -42,7 +42,9 @@ class ActuatorCommand(TypedDict):
     position: NotRequired[float]
     velocity: NotRequired[float]
     torque: NotRequired[float]
+    request_time: NotRequired[float]
     application_time: NotRequired[float]
+
 
 
 def get_integrator(integrator: str) -> mujoco.mjtIntegrator:
@@ -208,7 +210,6 @@ class MujocoSimulator:
             if self._sim_time >= target_command["application_time"]:
                 self._current_commands[name] = target_command
                 commands_to_remove.append(name)
-                logger.debug(f"Processing incoming command. {name=}, {target_command=}")
 
         # Remove processed commands
         if commands_to_remove:
@@ -232,7 +233,10 @@ class MujocoSimulator:
                 target_torque = np.clip(target_torque, -max_torque, max_torque)
             # logger.debug("Setting ctrl for actuator %s to %f", actuator_id, target_torque)
             if target_command["application_time"] != 0.0:
-                logger.debug(f"Processing current command. delay={(self._sim_time - target_command['application_time']):.6f}, {target_command=}")
+                duration = self._sim_time - target_command['application_time']
+                # do not cause log spam if the command becomes stale. (was sent over a second ago)
+                if duration > 0.03 and duration < 1.0: 
+                    logger.debug(f"Processing current command. {duration=:.6f}, {self._sim_time=}, {target_command['application_time']}, {name=}")
 
             self._data.ctrl[actuator_id] = target_torque
 
@@ -292,7 +296,7 @@ class MujocoSimulator:
             # Calculate random delay and application time
             delay = np.random.uniform(self._command_delay_min, self._command_delay_max)
             command["application_time"] = self._sim_time + delay
-
+            logger.debug(f"request to application latency: {(command['application_time'] - command['request_time']):.6f}")
             self._next_commands[joint_name] = command
 
     async def configure_actuator(self, joint_id: int, configuration: ConfigureActuatorRequest) -> None:

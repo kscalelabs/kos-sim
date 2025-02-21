@@ -2,6 +2,7 @@
 
 import asyncio
 import math
+import time
 
 import grpc
 from google.protobuf import empty_pb2
@@ -140,6 +141,7 @@ class ActuatorService(actuator_pb2_grpc.ActuatorServiceServicer):
                     "position": math.radians(cmd.position),
                     "velocity": math.radians(cmd.velocity),
                     "torque": cmd.torque,
+                    "request_time": time.time()
                 }
                 for cmd in request.commands
             }
