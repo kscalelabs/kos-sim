@@ -21,6 +21,18 @@ from kos_sim.services import ActuatorService, IMUService, SimService
 from kos_sim.simulator import MujocoSimulator
 from kos_sim.utils import get_sim_artifacts_path
 
+# Define the request time logging interceptor
+class TimingInterceptor(grpc.aio.ServerInterceptor):
+    async def intercept_service(self, continuation, handler_call_details):
+        start_time = time.time()  # Capture the start time
+        # Call the next interceptor or handler (this is where the actual request handling occurs)
+        response = await continuation(handler_call_details)
+        end_time = time.time()  # Capture the end time
+        response_time = end_time - start_time  # Calculate the response time
+        logger.debug(f"Request processed in {response_time:.6f} seconds")
+        return response
+
+
 
 class SimulationServer:
     def __init__(
@@ -41,6 +53,7 @@ class SimulationServer:
         joint_vel_noise: float = 0.0,
         sleep_time: float = 1e-6,
         mujoco_scene: str = "smooth",
+        render_decimation: int = 1,
     ) -> None:
         self.simulator = MujocoSimulator(
             model_path=model_path,
@@ -56,6 +69,7 @@ class SimulationServer:
             joint_pos_noise=joint_pos_noise,
             joint_vel_noise=joint_vel_noise,
             mujoco_scene=mujoco_scene,
+            render_decimation=render_decimation,
         )
         self.host = host
         self.port = port
@@ -67,7 +81,7 @@ class SimulationServer:
     async def _grpc_server_loop(self) -> None:
         """Run the async gRPC server."""
         # Create async gRPC server
-        self._server = grpc.aio.server(futures.ThreadPoolExecutor(max_workers=10))
+        self._server = grpc.aio.server(futures.ThreadPoolExecutor(max_workers=10), interceptors=[TimingInterceptor()])
 
         assert self._server is not None
 
@@ -90,7 +104,7 @@ class SimulationServer:
         """Run the simulation loop asynchronously."""
         start_time = time.time()
         num_renders = 0
-
+        total_steps = 0
         try:
             while not self._stop_event.is_set():
                 while self.simulator._sim_time < time.time():
@@ -100,19 +114,21 @@ class SimulationServer:
                             await self.simulator.step()
                     await asyncio.sleep(self._sleep_time)
 
-                await self.simulator.render()
+                if total_steps % self.simulator._render_decimation == 0:
+                    await self.simulator.render()
+                    num_renders += 1
 
                 # Sleep until the next control update.
                 current_time = time.time()
                 if current_time < self.simulator._sim_time:
                     await asyncio.sleep(self.simulator._sim_time - current_time)
 
-                num_renders += 1
-                logger.debug(
-                    "Simulation time: %f, rendering frequency: %f",
-                    self.simulator._sim_time,
-                    num_renders / (time.time() - start_time),
-                )
+                total_steps += 1
+                # logger.debug(
+                #     "Simulation time: %f, rendering frequency: %f",
+                #     self.simulator._sim_time,
+                #     num_renders / (time.time() - start_time),
+                # )
 
         except Exception as e:
             logger.error("Simulation loop failed: %s", e)
@@ -168,6 +184,7 @@ async def serve(
     joint_pos_noise: float = 0.0,
     joint_vel_noise: float = 0.0,
     mujoco_scene: str = "smooth",
+    render_decimation: int = 1,
 ) -> None:
     async with K() as api:
         model_dir, model_metadata = await asyncio.gather(
@@ -198,6 +215,7 @@ async def serve(
         joint_pos_noise=joint_pos_noise,
         joint_vel_noise=joint_vel_noise,
         mujoco_scene=mujoco_scene,
+        render_decimation=render_decimation,
     )
     await server.start()
 
@@ -210,6 +228,7 @@ async def run_server() -> None:
     parser.add_argument("--dt", type=float, default=0.001, help="Simulation timestep")
     parser.add_argument("--no-gravity", action="store_true", help="Disable gravity")
     parser.add_argument("--no-render", action="store_true", help="Disable rendering")
+    parser.add_argument("--render-decimation", type=int, default=1, help="Render decimation")
     parser.add_argument("--suspended", action="store_true", help="Suspended simulation")
     parser.add_argument("--command-delay-min", type=float, default=0.0, help="Minimum command delay")
     parser.add_argument("--command-delay-max", type=float, default=0.0, help="Maximum command delay")
@@ -237,7 +256,7 @@ async def run_server() -> None:
     joint_pos_noise = args.joint_pos_noise
     joint_vel_noise = args.joint_vel_noise
     mujoco_scene = args.scene
-
+    render_decimation = args.render_decimation
     logger.info("Model name: %s", model_name)
     logger.info("Port: %d", port)
     logger.info("DT: %f", dt)
@@ -251,6 +270,7 @@ async def run_server() -> None:
     logger.info("Joint pos noise: %f", joint_pos_noise)
     logger.info("Joint vel noise: %f", joint_vel_noise)
     logger.info("Mujoco scene: %s", mujoco_scene)
+    logger.info("Render decimation: %d", render_decimation)
 
     await serve(
         model_name=model_name,
@@ -267,6 +287,7 @@ async def run_server() -> None:
         joint_pos_noise=joint_pos_noise,
         joint_vel_noise=joint_vel_noise,
         mujoco_scene=mujoco_scene,
+        render_decimation=render_decimation,
     )
 
 
