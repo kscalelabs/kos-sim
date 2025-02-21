@@ -116,7 +116,7 @@ async def simple_walking(
             "buffer.1": np.zeros(570).astype(np.float32),
         }
 
-        x_vel_cmd = 0.3
+        x_vel_cmd = 0.5
         y_vel_cmd = 0.0
         yaw_vel_cmd = 0.0
         frequency = 50
