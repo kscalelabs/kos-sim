@@ -76,11 +76,7 @@ class MujocoSimulator:
         pd_update_frequency: float = 100.0,
         mujoco_scene: str = "smooth",
         integrator: str = "implicitfast",
-        iterations: int = 6,
-        ls_iterations: int = 6,
-        tolerance: float = 0.0,
-        ls_tolerance: float = 0.0,
-        o_margin: float = 0.01,
+        camera: str | None = None,
     ) -> None:
         # Stores parameters.
         self._model_path = model_path
@@ -96,6 +92,7 @@ class MujocoSimulator:
         self._joint_pos_noise = math.radians(joint_pos_noise)
         self._joint_vel_noise = math.radians(joint_vel_noise)
         self._update_pd_delta = 1.0 / pd_update_frequency
+        self._camera = camera
 
         # Gets the sim decimation.
         if (control_frequency := self._metadata.control_frequency) is None:
@@ -134,11 +131,6 @@ class MujocoSimulator:
         self._model = load_mjmodel(model_path, mujoco_scene)
         self._model.opt.timestep = self._dt
         self._model.opt.integrator = get_integrator(integrator)
-        self._model.opt.iterations = iterations
-        self._model.opt.ls_iterations = ls_iterations
-        self._model.opt.tolerance = tolerance
-        self._model.opt.ls_tolerance = ls_tolerance
-        self._model.opt.o_margin = o_margin
         self._data = mujoco.MjData(self._model)
 
         # model_joint_names = {self._model.joint(i).name for i in range(self._model.njnt)}
@@ -169,6 +161,11 @@ class MujocoSimulator:
             self._data,
             mode="window" if self._render_enabled else "offscreen",
         )
+
+        if self._camera is not None:
+            camera_obj = self._model.camera(self._camera)
+            self._viewer.cam.type = mujoco.mjtCamera.mjCAMERA_TRACKING
+            self._viewer.cam.trackbodyid = camera_obj.id
 
         # Cache lookups after initialization
         self._sensor_name_to_id = {self._model.sensor(i).name: i for i in range(self._model.nsensor)}
