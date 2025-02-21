@@ -163,9 +163,9 @@ class MujocoSimulator:
         )
 
         if self._camera is not None:
-            camera = self._model.camera(self._camera)
+            camera_obj = self._model.camera(self._camera)
             self._viewer.cam.type = mujoco.mjtCamera.mjCAMERA_TRACKING
-            self._viewer.cam.trackbodyid = camera.id
+            self._viewer.cam.trackbodyid = camera_obj.id
 
         # Cache lookups after initialization
         self._sensor_name_to_id = {self._model.sensor(i).name: i for i in range(self._model.nsensor)}
