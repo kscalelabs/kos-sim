@@ -42,6 +42,7 @@ class ActuatorCommand(TypedDict):
     position: NotRequired[float]
     velocity: NotRequired[float]
     torque: NotRequired[float]
+    application_time: NotRequired[float]
 
 
 def get_integrator(integrator: str) -> mujoco.mjtIntegrator:
@@ -193,9 +194,9 @@ class MujocoSimulator:
         # Add control parameters
         self._sim_time = time.time()
         self._current_commands: dict[str, ActuatorCommand] = {
-            name: {"position": 0.0, "velocity": 0.0, "torque": 0.0} for name in self._joint_name_to_id
+            name: {"position": 0.0, "velocity": 0.0, "torque": 0.0, "application_time": 0.0} for name in self._joint_name_to_id
         }
-        self._next_commands: dict[str, tuple[ActuatorCommand, float]] = {}
+        self._next_commands: dict[str, ActuatorCommand] = {}
 
     async def step(self) -> None:
         """Execute one step of the simulation."""
@@ -203,10 +204,11 @@ class MujocoSimulator:
 
         # Process commands that are ready to be applied
         commands_to_remove = []
-        for name, (target_command, application_time) in self._next_commands.items():
-            if self._sim_time >= application_time:
+        for name, target_command in self._next_commands.items():
+            if self._sim_time >= target_command["application_time"]:
                 self._current_commands[name] = target_command
                 commands_to_remove.append(name)
+                logger.debug(f"Processing incoming command. {name=}, {target_command=}")
 
         # Remove processed commands
         if commands_to_remove:
@@ -228,7 +230,10 @@ class MujocoSimulator:
             )
             if (max_torque := self._joint_name_to_max_torque.get(name)) is not None:
                 target_torque = np.clip(target_torque, -max_torque, max_torque)
-            logger.debug("Setting ctrl for actuator %s to %f", actuator_id, target_torque)
+            # logger.debug("Setting ctrl for actuator %s to %f", actuator_id, target_torque)
+            if target_command["application_time"] != 0.0:
+                logger.debug(f"Processing current command. delay={(self._sim_time - target_command['application_time']):.6f}, {target_command=}")
+
             self._data.ctrl[actuator_id] = target_torque
 
         # Step physics - allow other coroutines to run during computation
@@ -286,9 +291,9 @@ class MujocoSimulator:
 
             # Calculate random delay and application time
             delay = np.random.uniform(self._command_delay_min, self._command_delay_max)
-            application_time = self._sim_time + delay
+            command["application_time"] = self._sim_time + delay
 
-            self._next_commands[joint_name] = (command, application_time)
+            self._next_commands[joint_name] = command
 
     async def configure_actuator(self, joint_id: int, configuration: ConfigureActuatorRequest) -> None:
         """Configure an actuator using real joint ID."""

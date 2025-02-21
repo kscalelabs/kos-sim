@@ -124,11 +124,11 @@ class SimulationServer:
                     await asyncio.sleep(self.simulator._sim_time - current_time)
 
                 total_steps += 1
-                logger.debug(
-                    "Simulation time: %f, rendering frequency: %f",
-                    self.simulator._sim_time,
-                    num_renders / (time.time() - start_time),
-                )
+                # logger.debug(
+                #     "Simulation time: %f, rendering frequency: %f",
+                #     self.simulator._sim_time,
+                #     num_renders / (time.time() - start_time),
+                # )
 
         except Exception as e:
             logger.error("Simulation loop failed: %s", e)
