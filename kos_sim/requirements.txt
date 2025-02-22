@@ -8,3 +8,5 @@ mujoco-python-viewer
 numpy
 omegaconf
 pykos
+onnxruntime
+scipy

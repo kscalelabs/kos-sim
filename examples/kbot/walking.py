@@ -83,19 +83,24 @@ async def simple_walking(
                 kp=actuator.kp,
                 kd=actuator.kd,
                 max_torque=actuator.max_torque,
+                torque_enabled=True,
             )
 
-        await sim_kos.sim.reset(
-            pos={"x": 0.0, "y": 0.0, "z": 1.25},
-            quat={"x": 0.0, "y": 0.0, "z": 0.0, "w": 1.0},
-            joints=[
-                {
-                    "name": actuator.joint_name,
-                    "pos": pos,
-                }
-                for actuator, pos in zip(ACTUATOR_LIST, default_position)
-            ],
-        )
+        try:
+            await sim_kos.sim.reset(
+                pos={"x": 0.0, "y": 0.0, "z": 1.05},
+                quat={"x": 0.0, "y": 0.0, "z": 0.0, "w": 1.0},
+                joints=[
+                    {
+                        "name": actuator.joint_name,
+                        "pos": pos,
+                    }
+                    for actuator, pos in zip(ACTUATOR_LIST, default_position)
+                ],
+            )
+        except Exception as e:
+            logger.warning("Failed to reset simulation, ", e)
+
         start_time = time.time()
         end_time = None if num_seconds is None else start_time + num_seconds
 

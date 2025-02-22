@@ -24,3 +24,6 @@ MUJOCO_LOG.TXT
 # dev
 ref/
 .kos-sim/
+
+# env
+.venv/
