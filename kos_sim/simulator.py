@@ -95,7 +95,10 @@ class MujocoSimulator:
         self._camera = camera
 
         # Gets the sim decimation.
-        if (control_frequency := self._metadata.control_frequency) is None:
+            control_frequency = getattr(self._metadata, "control_frequency", None)
+        if control_frequency is None:
+            control_frequency = 50.0
+        self._control_frequency = float(control_frequency)
             raise ValueError("Control frequency is not set")
         self._control_frequency = float(control_frequency)
         self._control_dt = 1.0 / self._control_frequency
