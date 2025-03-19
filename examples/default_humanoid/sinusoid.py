@@ -99,7 +99,8 @@ async def main() -> None:
 
             await asyncio.sleep(0.02)
 
-
+# Start the server with
+# `python -m kos_sim.server default-humanoid`
 if __name__ == "__main__":
-    # python -m examples.kbot.test
+    # `python -m examples.default_humanoid.sinusoid`
     asyncio.run(main())

@@ -235,9 +235,7 @@ class MujocoSimulator:
 
         # for some reason running forward before step makes it more stable.
         # It possibly computes some values that are needed for the step.
-        mujoco.mj_forward(
-            self._model, self._data
-        )
+        mujoco.mj_forward(self._model, self._data)
         mujoco.mj_step(self._model, self._data)
         if self._suspended:
             # Find the root joint (floating_base)
