@@ -131,6 +131,8 @@ class MujocoSimulator:
         self._model = load_mjmodel(model_path, mujoco_scene)
         self._model.opt.timestep = self._dt
         self._model.opt.integrator = get_integrator(integrator)
+        self._model.opt.solver = mujoco.mjtSolver.mjSOL_CG
+
         self._data = mujoco.MjData(self._model)
 
         # model_joint_names = {self._model.joint(i).name for i in range(self._model.njnt)}
@@ -151,8 +153,9 @@ class MujocoSimulator:
         self._data.qacc = np.zeros_like(self._data.qacc)
 
         # Important: Step simulation once to initialize internal structures
-        mujoco.mj_step(self._model, self._data)
         mujoco.mj_forward(self._model, self._data)
+
+        mujoco.mj_step(self._model, self._data)
 
         # Setup viewer after initial step
         self._render_enabled = self._render
@@ -208,6 +211,8 @@ class MujocoSimulator:
             for name in commands_to_remove:
                 self._next_commands.pop(name)
 
+        mujoco.mj_forward(self._model, self._data)
+
         # Sets the ctrl values from the current commands.
         for name, target_command in self._current_commands.items():
             joint_id = self._joint_name_to_id[name]
@@ -227,6 +232,10 @@ class MujocoSimulator:
             self._data.ctrl[actuator_id] = target_torque
 
         # Step physics - allow other coroutines to run during computation
+
+        # for some reason running forward before step makes it more stable.
+        # It possibly computes some values that are needed for the step.
+        mujoco.mj_forward(self._model, self._data)
         mujoco.mj_step(self._model, self._data)
         if self._suspended:
             # Find the root joint (floating_base)
