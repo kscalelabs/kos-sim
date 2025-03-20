@@ -10,3 +10,4 @@ pykos
 onnxruntime
 scipy
 mediapy
+pydantic

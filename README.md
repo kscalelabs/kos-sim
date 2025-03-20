@@ -56,7 +56,7 @@ pip install -e .
 4. Run the simulator
 
 ```bash
-kos-sim kbot-v1
+kos-sim kbot-v2
 ```
 
 
