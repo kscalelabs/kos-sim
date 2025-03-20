@@ -14,16 +14,13 @@ from pathlib import Path
 import colorlogging
 import grpc
 from kos_protos import actuator_pb2_grpc, imu_pb2_grpc, process_manager_pb2_grpc, sim_pb2_grpc
-from kscale import K
-from kscale.web.gen.api import RobotURDFMetadataOutput
 from mujoco_scenes.mjcf import list_scenes
 
 from kos_sim import logger
+from kos_sim.assets import ensure_assets_up_to_date, get_model_metadata, get_model_path, RobotURDFMetadataOutput
 from kos_sim.services import ActuatorService, IMUService, ProcessManagerService, SimService
 from kos_sim.simulator import MujocoSimulator
-from kos_sim.utils import get_sim_artifacts_path
 from kos_sim.video_recorder import VideoRecorder
-
 
 @dataclass
 class SimulationRandomizationConfig:
@@ -192,19 +189,6 @@ class SimulationServer:
         await self.simulator.close()
 
 
-async def get_model_metadata(api: K, model_name: str) -> RobotURDFMetadataOutput:
-    model_path = get_sim_artifacts_path() / model_name / "metadata.json"
-    if model_path.exists():
-        return RobotURDFMetadataOutput.model_validate_json(model_path.read_text())
-    model_path.parent.mkdir(parents=True, exist_ok=True)
-    robot_class = await api.get_robot_class(model_name)
-    metadata = robot_class.metadata
-    if metadata is None:
-        raise ValueError(f"No metadata found for model {model_name}")
-    model_path.write_text(metadata.model_dump_json())
-    return metadata
-
-
 async def serve(
     model_name: str,
     host: str = "localhost",
@@ -214,11 +198,20 @@ async def serve(
     randomization: SimulationRandomizationConfig = SimulationRandomizationConfig(),
     mujoco_scene: str = "smooth",
 ) -> None:
-    async with K() as api:
-        model_dir, model_metadata = await asyncio.gather(
-            api.download_and_extract_urdf(model_name),
-            get_model_metadata(api, model_name),
-        )
+    # Ensure assets are up to date
+    if not ensure_assets_up_to_date():
+        raise RuntimeError("Failed to update assets")
+
+    # Get model path and metadata
+    model_dir = get_model_path(model_name)
+    if not model_dir.exists():
+        raise ValueError(f"Model {model_name} not found in assets")
+
+    metadata_json = get_model_metadata(model_name)
+    if metadata_json is None:
+        raise ValueError(f"No metadata found for model {model_name}")
+    
+    model_metadata = RobotURDFMetadataOutput.model_validate_json(metadata_json)
 
     model_path = next(
         itertools.chain(
@@ -233,6 +226,9 @@ async def serve(
         physics=physics,
         rendering=rendering,
         randomization=randomization,
+        mujoco_scene=mujoco_scene,
+        host=host,
+        port=port,
     )
 
     server = SimulationServer(config)

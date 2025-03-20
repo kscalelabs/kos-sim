@@ -1,1 +1,4 @@
-recursive-include kos_sim/ *.py *.txt py.typed MANIFEST.in
+include LICENSE
+include README.md
+recursive-include kos_sim/ *.py *.txt py.typed
+recursive-include kscale-assets *
