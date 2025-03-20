@@ -17,10 +17,11 @@ from kos_protos import actuator_pb2_grpc, imu_pb2_grpc, process_manager_pb2_grpc
 from mujoco_scenes.mjcf import list_scenes
 
 from kos_sim import logger
-from kos_sim.assets import ensure_assets_up_to_date, get_model_metadata, get_model_path, RobotURDFMetadataOutput
+from kos_sim.assets import RobotURDFMetadataOutput, ensure_assets_up_to_date, get_model_metadata, get_model_path
 from kos_sim.services import ActuatorService, IMUService, ProcessManagerService, SimService
 from kos_sim.simulator import MujocoSimulator
 from kos_sim.video_recorder import VideoRecorder
+
 
 @dataclass
 class SimulationRandomizationConfig:
@@ -210,7 +211,7 @@ async def serve(
     metadata_json = get_model_metadata(model_name)
     if metadata_json is None:
         raise ValueError(f"No metadata found for model {model_name}")
-    
+
     model_metadata = RobotURDFMetadataOutput.model_validate_json(metadata_json)
 
     model_path = next(

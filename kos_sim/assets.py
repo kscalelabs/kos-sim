@@ -1,12 +1,15 @@
 """Asset management for robot models."""
 
+import json
 import os
 import subprocess
 from pathlib import Path
-from typing import Optional, Dict
+from typing import Dict, Optional
+
+from pydantic import BaseModel, Field
 
 from kos_sim import logger
-from pydantic import BaseModel, Field
+
 
 class JointMetadataOutput(BaseModel):
     id: Optional[int] = Field(None, title="Id")
@@ -17,9 +20,11 @@ class JointMetadataOutput(BaseModel):
     offset: Optional[str] = Field(None, title="Offset")
     flipped: Optional[bool] = Field(None, title="Flipped")
 
+
 class RobotURDFMetadataOutput(BaseModel):
     joint_name_to_metadata: Optional[Dict[str, JointMetadataOutput]] = Field(None, title="Joint Name To Metadata")
     control_frequency: Optional[str] = Field(None, title="Control Frequency")
+
 
 def get_assets_dir() -> Path:
     """Get the directory containing the assets."""
@@ -33,10 +38,7 @@ def get_available_models() -> list[str]:
     assets_dir = get_assets_dir()
     if not assets_dir.exists():
         return []
-    models_dir = assets_dir / ""
-    if not models_dir.exists():
-        return []
-    return [d.name for d in models_dir.iterdir() if d.is_dir()]
+    return [d.name for d in assets_dir.iterdir() if d.is_dir()]
 
 
 def ensure_assets_up_to_date() -> bool:
@@ -48,10 +50,14 @@ def ensure_assets_up_to_date() -> bool:
 
     try:
         # Check if we need to update
-        subprocess.run(["git", "submodule", "status"], check=True, capture_output=True, cwd=Path(__file__).parent.parent)
-        
+        subprocess.run(
+            ["git", "submodule", "status"], check=True, capture_output=True, cwd=Path(__file__).parent.parent
+        )
+
         # Update the submodule
-        subprocess.run(["git", "submodule", "update", "--remote", "--merge"], check=True, cwd=Path(__file__).parent.parent)
+        subprocess.run(
+            ["git", "submodule", "update", "--remote", "--merge"], check=True, cwd=Path(__file__).parent.parent
+        )
         logger.info("Assets are up to date")
         return True
     except subprocess.CalledProcessError as e:
@@ -74,13 +80,12 @@ def get_model_metadata(model_name: str) -> Optional[str]:
     if not metadata_path.exists():
         logger.error("Metadata not found for model %s", model_name)
         return None
-    
+
     try:
-        import json
         data = json.loads(metadata_path.read_text())
-        
+
         # Convert numeric values to strings to satisfy Pydantic validation
-        def convert_numeric_to_string(obj):
+        def convert_numeric_to_string(obj: object) -> object:
             if isinstance(obj, dict):
                 return {k: convert_numeric_to_string(v) for k, v in obj.items()}
             elif isinstance(obj, list):
@@ -89,9 +94,9 @@ def get_model_metadata(model_name: str) -> Optional[str]:
                 return str(obj)
             else:
                 return obj
-        
+
         # Convert the modified dict back to a JSON string
         return json.dumps(convert_numeric_to_string(data))
     except json.JSONDecodeError:
         logger.error("Failed to parse metadata JSON for model %s", model_name)
-        return None 
+        return None
