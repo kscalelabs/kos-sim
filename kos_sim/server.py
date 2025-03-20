@@ -8,6 +8,7 @@ import os
 import time
 import traceback
 from concurrent import futures
+from dataclasses import dataclass
 from pathlib import Path
 
 import colorlogging
@@ -24,66 +25,86 @@ from kos_sim.utils import get_sim_artifacts_path
 from kos_sim.video_recorder import VideoRecorder
 
 
+@dataclass
+class SimulationRandomizationConfig:
+    command_delay_min: float = 0.0
+    command_delay_max: float = 0.0
+    joint_pos_delta_noise: float = 0.0
+    joint_pos_noise: float = 0.0
+    joint_vel_noise: float = 0.0
+
+
+@dataclass
+class RenderingConfig:
+    render: bool = True
+    render_frequency: float = 1
+    video_output_dir: str | Path | None = None
+    frame_width: int = 640
+    frame_height: int = 480
+    camera: str | None = None
+
+
+@dataclass
+class PhysicsConfig:
+    gravity: bool = True
+    suspended: bool = False
+    start_height: float = 1.5
+    dt: float = 0.0001
+
+
+@dataclass
+class SimulationServerConfig:
+    randomization: SimulationRandomizationConfig
+    rendering: RenderingConfig
+    physics: PhysicsConfig
+    model_path: str | Path
+    model_metadata: RobotURDFMetadataOutput
+    mujoco_scene: str = "smooth"
+    host: str = "localhost"
+    port: int = 50051
+    sleep_time: float = 1e-6
+
+
 class SimulationServer:
     def __init__(
         self,
-        model_path: str | Path,
-        model_metadata: RobotURDFMetadataOutput,
-        host: str = "localhost",
-        port: int = 50051,
-        dt: float = 0.0001,
-        gravity: bool = True,
-        render: bool = True,
-        render_frequency: float = 1,
-        suspended: bool = False,
-        start_height: float = 1.5,
-        command_delay_min: float = 0.0,
-        command_delay_max: float = 0.0,
-        joint_pos_delta_noise: float = 0.0,
-        joint_pos_noise: float = 0.0,
-        joint_vel_noise: float = 0.0,
-        sleep_time: float = 1e-6,
-        mujoco_scene: str = "smooth",
-        camera: str | None = None,
-        video_output_dir: str | Path | None = None,
-        frame_width: int = 640,
-        frame_height: int = 480,
+        config: SimulationServerConfig,
     ) -> None:
         self.simulator = MujocoSimulator(
-            model_path=model_path,
-            model_metadata=model_metadata,
-            dt=dt,
-            gravity=gravity,
-            render_mode="window" if render else "offscreen",
-            suspended=suspended,
-            start_height=start_height,
-            command_delay_min=command_delay_min,
-            command_delay_max=command_delay_max,
-            joint_pos_delta_noise=joint_pos_delta_noise,
-            joint_pos_noise=joint_pos_noise,
-            joint_vel_noise=joint_vel_noise,
-            mujoco_scene=mujoco_scene,
-            camera=camera,
-            frame_width=frame_width,
-            frame_height=frame_height,
+            model_path=config.model_path,
+            model_metadata=config.model_metadata,
+            dt=config.physics.dt,
+            gravity=config.physics.gravity,
+            render_mode="window" if config.rendering.render else "offscreen",
+            suspended=config.physics.suspended,
+            start_height=config.physics.start_height,
+            command_delay_min=config.randomization.command_delay_min,
+            command_delay_max=config.randomization.command_delay_max,
+            joint_pos_delta_noise=config.randomization.joint_pos_delta_noise,
+            joint_pos_noise=config.randomization.joint_pos_noise,
+            joint_vel_noise=config.randomization.joint_vel_noise,
+            mujoco_scene=config.mujoco_scene,
+            camera=config.rendering.camera,
+            frame_width=config.rendering.frame_width,
+            frame_height=config.rendering.frame_height,
         )
-        self.host = host
-        self.port = port
-        self._sleep_time = sleep_time
+        self.host = config.host
+        self.port = config.port
+        self._sleep_time = config.sleep_time
         self._stop_event = asyncio.Event()
         self._server = None
         self._step_lock = asyncio.Semaphore(1)
-        self._render_decimation = int(1.0 / render_frequency)
+        self._render_decimation = int(1.0 / config.rendering.render_frequency)
 
         # Initialize video recorder if needed
         self.video_recorder = None
-        if video_output_dir is not None:
+        if config.rendering.video_output_dir is not None:
             self.video_recorder = VideoRecorder(
                 simulator=self.simulator,
-                output_dir=video_output_dir,
+                output_dir=config.rendering.video_output_dir,
                 fps=int(self.simulator._control_frequency),
-                frame_width=frame_width,
-                frame_height=frame_height,
+                frame_width=config.rendering.frame_width,
+                frame_height=config.rendering.frame_height,
             )
 
     async def _grpc_server_loop(self) -> None:
@@ -188,20 +209,10 @@ async def serve(
     model_name: str,
     host: str = "localhost",
     port: int = 50051,
-    dt: float = 0.001,
-    gravity: bool = True,
-    render: bool = True,
-    render_frequency: float = 1,
-    suspended: bool = False,
-    start_height: float = 1.5,
-    command_delay_min: float = 0.0,
-    command_delay_max: float = 0.0,
-    joint_pos_delta_noise: float = 0.0,
-    joint_pos_noise: float = 0.0,
-    joint_vel_noise: float = 0.0,
+    rendering: RenderingConfig = RenderingConfig(),
+    physics: PhysicsConfig = PhysicsConfig(),
+    randomization: SimulationRandomizationConfig = SimulationRandomizationConfig(),
     mujoco_scene: str = "smooth",
-    camera: str | None = None,
-    video_output_dir: str | Path | None = None,
 ) -> None:
     async with K() as api:
         model_dir, model_metadata = await asyncio.gather(
@@ -216,26 +227,15 @@ async def serve(
         )
     )
 
-    server = SimulationServer(
-        model_path,
+    config = SimulationServerConfig(
+        model_path=model_path,
         model_metadata=model_metadata,
-        host=host,
-        port=port,
-        dt=dt,
-        gravity=gravity,
-        render=render,
-        render_frequency=render_frequency,
-        suspended=suspended,
-        start_height=start_height,
-        command_delay_min=command_delay_min,
-        command_delay_max=command_delay_max,
-        joint_pos_delta_noise=joint_pos_delta_noise,
-        joint_pos_noise=joint_pos_noise,
-        joint_vel_noise=joint_vel_noise,
-        mujoco_scene=mujoco_scene,
-        camera=camera,
-        video_output_dir=video_output_dir,
+        physics=physics,
+        rendering=rendering,
+        randomization=randomization,
     )
+
+    server = SimulationServer(config)
     await server.start()
 
 
@@ -259,6 +259,8 @@ async def run_server() -> None:
     parser.add_argument("--camera", type=str, default=None, help="Camera to use")
     parser.add_argument("--debug", action="store_true", help="Enable debug logging")
     parser.add_argument("--video-output-dir", type=str, default="videos", help="Directory to save videos")
+    parser.add_argument("--frame-width", type=int, default=640, help="Frame width")
+    parser.add_argument("--frame-height", type=int, default=480, help="Frame height")
 
     args = parser.parse_args()
 
@@ -280,6 +282,8 @@ async def run_server() -> None:
     joint_vel_noise = args.joint_vel_noise
     mujoco_scene = args.scene
     camera = args.camera
+    frame_width = args.frame_width
+    frame_height = args.frame_height
 
     video_output_dir = args.video_output_dir if not render else None
 
@@ -299,28 +303,44 @@ async def run_server() -> None:
     logger.info("Mujoco scene: %s", mujoco_scene)
     logger.info("Camera: %s", camera)
     logger.info("Video output dir: %s", video_output_dir)
+    logger.info("Frame width: %d", frame_width)
+    logger.info("Frame height: %d", frame_height)
 
     if video_output_dir is not None:
         os.makedirs(video_output_dir, exist_ok=True)
 
-    await serve(
-        model_name=model_name,
-        host=host,
-        port=port,
-        dt=dt,
-        gravity=gravity,
+    rendering = RenderingConfig(
         render=render,
         render_frequency=render_frequency,
+        video_output_dir=video_output_dir,
+        frame_width=frame_width,
+        frame_height=frame_height,
+        camera=camera,
+    )
+
+    physics = PhysicsConfig(
+        dt=dt,
+        gravity=gravity,
         suspended=suspended,
         start_height=start_height,
+    )
+
+    randomization = SimulationRandomizationConfig(
         command_delay_min=command_delay_min,
         command_delay_max=command_delay_max,
         joint_pos_delta_noise=joint_pos_delta_noise,
         joint_pos_noise=joint_pos_noise,
         joint_vel_noise=joint_vel_noise,
+    )
+
+    await serve(
+        model_name=model_name,
+        host=host,
+        port=port,
+        rendering=rendering,
+        physics=physics,
+        randomization=randomization,
         mujoco_scene=mujoco_scene,
-        camera=camera,
-        video_output_dir=video_output_dir,
     )
 
 
