@@ -13,10 +13,13 @@ from kos_protos import (
     imu_pb2_grpc,
     sim_pb2,
     sim_pb2_grpc,
+    process_manager_pb2,
+    process_manager_pb2_grpc,
 )
 
 from kos_sim import logger
 from kos_sim.simulator import ActuatorCommand, ConfigureActuatorRequest, MujocoSimulator
+from kos_sim.video_recorder import VideoRecorder
 
 
 class SimService(sim_pb2_grpc.SimulationServiceServicer):
@@ -118,7 +121,6 @@ class SimService(sim_pb2_grpc.SimulationServiceServicer):
             context.set_code(grpc.StatusCode.INTERNAL)
             context.set_details(str(e))
             return sim_pb2.GetParametersResponse(error=common_pb2.Error(message=str(e)))
-
 
 class ActuatorService(actuator_pb2_grpc.ActuatorServiceServicer):
     """Implementation of ActuatorService that wraps a MuJoCo simulation."""
@@ -300,3 +302,24 @@ class IMUService(imu_pb2_grpc.IMUServiceServicer):
             context.set_code(grpc.StatusCode.INTERNAL)
             context.set_details(str(e))
             return imu_pb2.EulerAnglesResponse()
+
+class ProcessManagerService(process_manager_pb2_grpc.ProcessManagerServiceServicer):
+    """Implementation of ProcessManagerService that wraps a MuJoCo simulation."""
+
+    def __init__(self, simulator: MujocoSimulator, video_recorder: VideoRecorder) -> None:
+        self.simulator = simulator
+        self.video_recorder = video_recorder
+
+    async def StartKClip(self, request: process_manager_pb2.KClipStartRequest, context: grpc.ServicerContext) -> process_manager_pb2.KClipStartResponse:
+        """Implements StartKClip by starting k-clip recording."""
+        if self.video_recorder is None:
+            return process_manager_pb2.KClipStartResponse(error=common_pb2.Error(code=common_pb2.ErrorCode.INVALID_ARGUMENT, message="`video_recorder` is `None`. Video recording not enabled."))
+        clip_id = self.video_recorder.start_recording()
+        return process_manager_pb2.KClipStartResponse(clip_uuid=clip_id)
+    
+    async def StopKClip(self, request: empty_pb2.Empty, context: grpc.ServicerContext) -> process_manager_pb2.KClipStopResponse:
+        """Implements StopKClip by stopping k-clip recording."""
+        if self.video_recorder is None:
+            return process_manager_pb2.KClipStopResponse(error=common_pb2.Error(code=common_pb2.ErrorCode.INVALID_ARGUMENT, message="`video_recorder` is `None`. Video recording not enabled."))
+        self.video_recorder.stop_recording()
+        return process_manager_pb2.KClipStopResponse()
