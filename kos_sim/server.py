@@ -12,7 +12,7 @@ from pathlib import Path
 
 import colorlogging
 import grpc
-from kos_protos import actuator_pb2_grpc, imu_pb2_grpc, sim_pb2_grpc
+from kos_protos import actuator_pb2_grpc, imu_pb2_grpc, process_manager_pb2_grpc, sim_pb2_grpc
 from kscale import K
 from kscale.web.gen.api import RobotURDFMetadataOutput
 from mujoco_scenes.mjcf import list_scenes
@@ -22,7 +22,6 @@ from kos_sim.services import ActuatorService, IMUService, ProcessManagerService,
 from kos_sim.simulator import MujocoSimulator
 from kos_sim.utils import get_sim_artifacts_path
 from kos_sim.video_recorder import VideoRecorder
-from ref.kos_protos import process_manager_pb2_grpc
 
 
 class SimulationServer:
