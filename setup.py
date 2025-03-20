@@ -50,6 +50,9 @@ setup(
         "examples": requirements_examples,
     },
     packages=["kos_sim"],
+    package_data={
+        "kos_sim": ["py.typed", "requirements.txt", "kscale-assets/**/*"],
+    },
     entry_points={
         "console_scripts": [
             "kos-sim=kos_sim.server:main",

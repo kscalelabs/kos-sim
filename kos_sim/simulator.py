@@ -10,10 +10,10 @@ from typing import Literal, NotRequired, TypedDict, TypeVar
 import mujoco
 import mujoco_viewer
 import numpy as np
-from kscale.web.gen.api import RobotURDFMetadataOutput
 from mujoco_scenes.mjcf import load_mjmodel
 
 from kos_sim import logger
+from kos_sim.assets import RobotURDFMetadataOutput
 
 T = TypeVar("T")
 

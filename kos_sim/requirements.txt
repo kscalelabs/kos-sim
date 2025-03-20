@@ -1,7 +1,6 @@
 # requirements.txt
 
 colorlogging
-kscale
 mujoco
 mujoco-scenes
 mujoco-python-viewer
@@ -11,3 +10,4 @@ pykos
 onnxruntime
 scipy
 mediapy
+pydantic
