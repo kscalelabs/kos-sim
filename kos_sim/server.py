@@ -119,7 +119,6 @@ class SimulationServer:
 
         try:
             while not self._stop_event.is_set():
-
                 while self.simulator._sim_time < time.time():
                     # Run one control loop.
                     async with self._step_lock:
