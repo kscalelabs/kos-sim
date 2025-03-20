@@ -10,3 +10,4 @@ omegaconf
 pykos
 onnxruntime
 scipy
+mediapy

@@ -5,7 +5,7 @@ import random
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import NotRequired, TypedDict, TypeVar
+from typing import Literal, NotRequired, TypedDict, TypeVar
 
 import mujoco
 import mujoco_viewer
@@ -65,7 +65,7 @@ class MujocoSimulator:
         model_metadata: RobotURDFMetadataOutput,
         dt: float = 0.001,
         gravity: bool = True,
-        render: bool = True,
+        render_mode: Literal["window", "offscreen"] = "window",
         suspended: bool = False,
         start_height: float = 1.5,
         command_delay_min: float = 0.0,
@@ -77,13 +77,15 @@ class MujocoSimulator:
         mujoco_scene: str = "smooth",
         integrator: str = "implicitfast",
         camera: str | None = None,
+        frame_width: int = 640,
+        frame_height: int = 480,
     ) -> None:
         # Stores parameters.
         self._model_path = model_path
         self._metadata = model_metadata
         self._dt = dt
         self._gravity = gravity
-        self._render = render
+        self._render_mode = render_mode
         self._suspended = suspended
         self._start_height = start_height
         self._command_delay_min = command_delay_min
@@ -135,11 +137,6 @@ class MujocoSimulator:
 
         self._data = mujoco.MjData(self._model)
 
-        # model_joint_names = {self._model.joint(i).name for i in range(self._model.njnt)}
-        # invalid_joint_names = [name for name in self._joint_name_to_id if name not in model_joint_names]
-        # if invalid_joint_names:
-        #     raise ValueError(f"Joint names {invalid_joint_names} not found in model")
-
         logger.info("Joint ID to name: %s", self._joint_id_to_name)
 
         if not self._gravity:
@@ -154,15 +151,16 @@ class MujocoSimulator:
 
         # Important: Step simulation once to initialize internal structures
         mujoco.mj_forward(self._model, self._data)
-
         mujoco.mj_step(self._model, self._data)
 
         # Setup viewer after initial step
-        self._render_enabled = self._render
+        self._render_enabled = self._render_mode == "window"
         self._viewer = mujoco_viewer.MujocoViewer(
             self._model,
             self._data,
-            mode="window" if self._render_enabled else "offscreen",
+            mode=self._render_mode,
+            width=frame_width,
+            height=frame_height,
         )
 
         if self._camera is not None:
@@ -251,6 +249,33 @@ class MujocoSimulator:
         """Render the simulation asynchronously."""
         if self._render_enabled:
             self._viewer.render()
+
+    async def capture_frame(self, camid: int = -1, depth: bool = False) -> tuple[np.ndarray, np.ndarray | None]:
+        """Capture a frame from the simulation using read_pixels.
+
+        Args:
+            camid: Camera ID to use (-1 for free camera)
+            depth: Whether to return depth information
+
+        Returns:
+            RGB image array (and optionally depth array) if depth=True
+        """
+        if self._render_mode != "offscreen" and self._render_enabled:
+            logger.warning("Capturing frames is more efficient in offscreen mode")
+
+        if camid is not None:
+            if camid == -1:
+                self._viewer.cam.type = mujoco.mjtCamera.mjCAMERA_FREE
+            else:
+                self._viewer.cam.type = mujoco.mjtCamera.mjCAMERA_FIXED
+                self._viewer.cam.fixedcamid = camid
+
+        if depth:
+            rgb, depth_img = self._viewer.read_pixels(depth=True)
+            return rgb, depth_img
+        else:
+            rgb = self._viewer.read_pixels()
+            return rgb, None
 
     async def get_sensor_data(self, name: str) -> np.ndarray:
         """Get data from a named sensor."""
