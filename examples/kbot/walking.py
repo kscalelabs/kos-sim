@@ -119,7 +119,7 @@ async def simple_walking(
             "prev_actions.1": np.zeros(10).astype(np.float32),
             "projected_gravity.1": np.zeros(3).astype(np.float32),
             "buffer.1": np.zeros(570).astype(np.float32),
-    }
+        }
 
         x_vel_cmd = 1.0
         y_vel_cmd = 0.0

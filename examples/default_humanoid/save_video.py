@@ -7,6 +7,7 @@ from pykos import KOS
 
 logger = logging.getLogger(__name__)
 
+
 async def main() -> None:
     async with KOS() as kos:
         await kos.sim.reset(

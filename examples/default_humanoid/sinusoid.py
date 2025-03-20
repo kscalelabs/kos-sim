@@ -42,6 +42,7 @@ ACTUATOR_LIST: list[Actuator] = [
     Actuator(actuator_id=21, nn_id=20, kp=50.0, kd=1.0, max_torque=30.0, joint_name="elbow_left"),
 ]
 
+
 async def configure_joints(kos: KOS) -> None:
     for actuator in ACTUATOR_LIST:
         await kos.actuator.configure_actuator(
@@ -50,6 +51,7 @@ async def configure_joints(kos: KOS) -> None:
             kd=actuator.kd,
             max_torque=actuator.max_torque,
         )
+
 
 async def reset_joints(kos: KOS) -> None:
     await kos.sim.reset(
@@ -61,14 +63,15 @@ async def reset_joints(kos: KOS) -> None:
         ],
     )
 
+
 async def command_zero_joints(kos: KOS) -> None:
     await kos.actuator.command_actuators(
         [{"actuator_id": actuator.actuator_id, "position": 0.0, "velocity": 0.0} for actuator in ACTUATOR_LIST]
     )
 
+
 async def main() -> None:
     async with KOS() as kos:
-
         await reset_joints(kos)
         await configure_joints(kos)
 
@@ -98,6 +101,7 @@ async def main() -> None:
             print(f"pos: {cur_pos}")
 
             await asyncio.sleep(0.02)
+
 
 # Start the server with
 # `python -m kos_sim.server default-humanoid`
