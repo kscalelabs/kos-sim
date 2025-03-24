@@ -4,26 +4,9 @@ import json
 import os
 import subprocess
 from pathlib import Path
-from typing import Dict, Optional
-
-from pydantic import BaseModel, Field
+from typing import Optional
 
 from kos_sim import logger
-
-
-class JointMetadataOutput(BaseModel):
-    id: Optional[int] = Field(None, title="Id")
-    kp: Optional[str] = Field(None, title="Kp")
-    kd: Optional[str] = Field(None, title="Kd")
-    armature: Optional[str] = Field(None, title="Armature")
-    friction: Optional[str] = Field(None, title="Friction")
-    offset: Optional[str] = Field(None, title="Offset")
-    flipped: Optional[bool] = Field(None, title="Flipped")
-
-
-class RobotURDFMetadataOutput(BaseModel):
-    joint_name_to_metadata: Optional[Dict[str, JointMetadataOutput]] = Field(None, title="Joint Name To Metadata")
-    control_frequency: Optional[str] = Field(None, title="Control Frequency")
 
 
 def get_assets_dir() -> Path:
@@ -49,22 +32,25 @@ def ensure_assets_up_to_date() -> bool:
         return False
 
     try:
-        # Check if we need to update
-        subprocess.run(
+        result = subprocess.run(
             ["git", "submodule", "status"], check=True, capture_output=True, cwd=Path(__file__).parent.parent
         )
 
-        # Update the submodule
-        subprocess.run(
-            ["git", "submodule", "update", "--remote", "--merge"], check=True, cwd=Path(__file__).parent.parent
-        )
-        logger.info("Assets are up to date")
+        status_output = result.stdout.decode("utf-8").strip()
+        if status_output.startswith("+"):
+            logger.warning(
+                "kscale-assets submodule has updates available. "
+                "You can update manually with 'git submodule update --remote --merge'"
+            )
+        else:
+            logger.info("Assets are up to date")
+
         return True
     except subprocess.CalledProcessError as e:
-        logger.error("Failed to update assets: %s", e)
+        logger.error("Failed to check assets status: %s", e)
         return False
     except Exception as e:
-        logger.error("Unexpected error updating assets: %s", e)
+        logger.error("Unexpected error checking assets: %s", e)
         return False
 
 

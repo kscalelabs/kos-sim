@@ -13,7 +13,7 @@ import numpy as np
 from mujoco_scenes.mjcf import load_mjmodel
 
 from kos_sim import logger
-from kos_sim.assets import RobotURDFMetadataOutput
+from kos_sim.utils import RobotURDFMetadataOutput
 
 T = TypeVar("T")
 

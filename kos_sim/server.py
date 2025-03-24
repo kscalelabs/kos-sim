@@ -17,9 +17,10 @@ from kos_protos import actuator_pb2_grpc, imu_pb2_grpc, process_manager_pb2_grpc
 from mujoco_scenes.mjcf import list_scenes
 
 from kos_sim import logger
-from kos_sim.assets import RobotURDFMetadataOutput, ensure_assets_up_to_date, get_model_metadata, get_model_path
+from kos_sim.assets import ensure_assets_up_to_date, get_model_metadata, get_model_path
 from kos_sim.services import ActuatorService, IMUService, ProcessManagerService, SimService
 from kos_sim.simulator import MujocoSimulator
+from kos_sim.utils import RobotURDFMetadataOutput
 from kos_sim.video_recorder import VideoRecorder
 
 
