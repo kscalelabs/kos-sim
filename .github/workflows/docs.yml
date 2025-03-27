@@ -1,0 +1,49 @@
+name: Generate Documentation
+
+on:
+  push:
+    branches:
+      - master
+
+jobs:
+  generate-docs:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout kos-sim repository
+        uses: actions/checkout@v3
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pdoc3
+          pip install -e .
+      
+      - name: Generate documentation
+        run: pdoc --html --output-dir ./kos_sim_docs --force kos_sim
+      
+      - name: Checkout api-docs repository
+        uses: actions/checkout@v3
+        with:
+          repository: kscale/api-docs
+          token: ${{ secrets.API_DOCS_TOKEN }}
+          path: api-docs
+      
+      - name: Copy documentation to api-docs repository
+        run: |
+          mkdir -p api-docs/kos_sim
+          cp -r ./kos_sim_docs/kos_sim/* api-docs/kos_sim/
+      
+      - name: Commit and push changes
+        run: |
+          cd api-docs
+          git config user.name "GitHub Actions Bot"
+          git config user.email "actions@github.com"
+          git add kos_sim/
+          git commit -m "Update kos_sim documentation" || echo "No changes to commit"
+          git push
