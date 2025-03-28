@@ -17,19 +17,25 @@ jobs:
         uses: actions/setup-python@v4
         with:
           python-version: '3.11'
-      - name: install system dependencies required by glfw/mujoco
+      - name: install dependencies required by glfw/mujoco
         run: |
           sudo apt-get update
-          sudo apt-get install -y libgl1-mesa-glx libglfw3 libglfw3-dev xvfb
+          sudo apt-get install -y libosmesa6-dev libgl1-mesa-glx libglu1-mesa freeglut3-dev
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
+          pip install PyOpenGL PyOpenGL-accelerate
           pip install -e .
           pip install pdoc black loguru ks_digital_twin
       - name: Generate documentation
         run: |
-          export PATH=$pythonLocation/bin:$PATH
+          export MUJOCO_GL=osmesa
+          export PYTHONPATH=$PYTHONPATH:$(pwd)
+          export PDOC_ALLOW_EXEC=1
           pdoc --output-dir ./docs kos_sim
+        env:
+          MUJOCO_GL: osmesa
+          PDOC_ALLOW_EXEC: 1
       - name: Setup GitHub CLI
         run: |
           gh auth setup-git
