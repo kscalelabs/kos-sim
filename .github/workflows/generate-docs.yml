@@ -52,25 +52,16 @@ jobs:
         run: |
           mkdir -p api-docs/kos_sim
           cp -r docs/kos_sim/* api-docs/kos_sim/
-      - name: Create PR for api-docs
+      - name: Push directly to master branch
         run: |
           cd api-docs
           git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
-          # Create a new branch
-          BRANCH_NAME="update-docs-${{ github.sha }}"
-          git checkout -b $BRANCH_NAME
           # Add and commit changes
           git add .
           git commit -m "Update documentation from ${{ github.sha }}" || { echo "No changes to commit"; exit 0; }
           # Push to the repository with token authentication
           git remote set-url origin "https://x-access-token:${{ secrets.API_DOCS_TOKEN }}@github.com/kscalelabs/api-docs.git"
-          git push -u origin $BRANCH_NAME
-          # Create PR directly in the original repo
-          gh pr create \
-            --repo kscalelabs/api-docs \
-            --title "Update documentation" \
-            --body "Auto-generated documentation update from commit ${{ github.sha }}" \
-            --head $BRANCH_NAME
+          git push origin master
         env:
           GH_TOKEN: ${{ secrets.API_DOCS_TOKEN }}
