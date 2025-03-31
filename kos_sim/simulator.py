@@ -14,6 +14,7 @@ from kscale.web.gen.api import RobotURDFMetadataOutput
 from mujoco_scenes.mjcf import load_mjmodel
 
 from kos_sim import logger
+from kos_sim.actuators import create_actuator, BaseActuator
 
 T = TypeVar("T")
 
@@ -117,6 +118,16 @@ class MujocoSimulator:
         }
         self._joint_name_to_max_torque: dict[str, float] = {}
 
+        # Gets the Actuator Type for each joint.
+        self._joint_name_to_actuator_type: dict[str, str] = {
+            name: _nn(joint.actuator_type) for name, joint in self._metadata.joint_name_to_metadata.items()
+        }
+
+        # Create unique actuator instances keyed by actuator type.
+        self._actuator_instances: dict[str, BaseActuator] = {}
+        for actuator_type in set(self._joint_name_to_actuator_type.values()):
+            self._actuator_instances[actuator_type] = create_actuator(actuator_type)
+
         # Gets the inverse mapping.
         self._joint_id_to_name = {v: k for k, v in self._joint_name_to_id.items()}
         if len(self._joint_name_to_id) != len(self._joint_id_to_name):
@@ -193,6 +204,7 @@ class MujocoSimulator:
         }
         self._next_commands: dict[str, tuple[ActuatorCommand, float]] = {}
 
+
     async def step(self) -> None:
         """Execute one step of the simulation."""
         self._sim_time += self._dt
@@ -215,18 +227,18 @@ class MujocoSimulator:
         for name, target_command in self._current_commands.items():
             joint_id = self._joint_name_to_id[name]
             actuator_id = self._joint_id_to_actuator_id[joint_id]
+            actuator_type = self._joint_name_to_actuator_type[name]
+            actuator = self._actuator_instances.get(actuator_type)
+            if actuator is None:
+                raise ValueError(f"Unsupported actuator type for joint {name}: '{actuator_type}'")
             kp = self._joint_name_to_kp[name]
             kd = self._joint_name_to_kd[name]
+            max_torque = 5 #Temp, until we integrate sysid motor params #self._joint_name_to_max_torque[name]
             current_position = self._data.joint(name).qpos
             current_velocity = self._data.joint(name).qvel
-            target_torque = (
-                kp * (target_command["position"] - current_position)
-                + kd * (target_command["velocity"] - current_velocity)
-                + target_command["torque"]
-            )
-            if (max_torque := self._joint_name_to_max_torque.get(name)) is not None:
-                target_torque = np.clip(target_torque, -max_torque, max_torque)
-            logger.debug("Setting ctrl for actuator %s to %f", actuator_id, target_torque)
+
+            target_torque = actuator.get_ctrl(kp, kd, target_command, current_position, current_velocity, max_torque)
+            logger.debug("Setting ctrl for actuator %s [type: %s] to %f", actuator_id, actuator_type, target_torque)
             self._data.ctrl[actuator_id] = target_torque
 
         # Step physics - allow other coroutines to run during computation
