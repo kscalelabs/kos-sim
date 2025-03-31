@@ -15,6 +15,8 @@ from mujoco_scenes.mjcf import load_mjmodel
 
 from kos_sim import logger
 from kos_sim.actuators import create_actuator, BaseActuator
+from kos_sim.types import ActuatorCommand, ConfigureActuatorRequest
+
 
 T = TypeVar("T")
 
@@ -24,25 +26,10 @@ def _nn(value: T | None) -> T:
         raise ValueError("Value is not set")
     return value
 
-
-class ConfigureActuatorRequest(TypedDict):
-    torque_enabled: NotRequired[bool]
-    zero_position: NotRequired[float]
-    kp: NotRequired[float]
-    kd: NotRequired[float]
-    max_torque: NotRequired[float]
-
-
 @dataclass
 class ActuatorState:
     position: float
     velocity: float
-
-
-class ActuatorCommand(TypedDict):
-    position: NotRequired[float]
-    velocity: NotRequired[float]
-    torque: NotRequired[float]
 
 
 def get_integrator(integrator: str) -> mujoco.mjtIntegrator:
@@ -64,6 +51,7 @@ class MujocoSimulator:
         self,
         model_path: str | Path,
         model_metadata: RobotURDFMetadataOutput,
+        actuator_catalog_path: str | Path,
         dt: float = 0.001,
         gravity: bool = True,
         render_mode: Literal["window", "offscreen"] = "window",
@@ -84,6 +72,7 @@ class MujocoSimulator:
         # Stores parameters.
         self._model_path = model_path
         self._metadata = model_metadata
+        self._actuator_catalog_path = actuator_catalog_path
         self._dt = dt
         self._gravity = gravity
         self._render_mode = render_mode
@@ -126,7 +115,7 @@ class MujocoSimulator:
         # Create unique actuator instances keyed by actuator type.
         self._actuator_instances: dict[str, BaseActuator] = {}
         for actuator_type in set(self._joint_name_to_actuator_type.values()):
-            self._actuator_instances[actuator_type] = create_actuator(actuator_type)
+            self._actuator_instances[actuator_type] = create_actuator(actuator_type, self._actuator_catalog_path)
 
         # Gets the inverse mapping.
         self._joint_id_to_name = {v: k for k, v in self._joint_name_to_id.items()}
