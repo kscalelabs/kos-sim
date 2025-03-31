@@ -59,6 +59,7 @@ class SimulationServerConfig:
     physics: PhysicsConfig
     model_path: str | Path
     model_metadata: RobotURDFMetadataOutput
+    actuator_catalog_path: str | Path
     mujoco_scene: str = "smooth"
     host: str = "localhost"
     port: int = 50051
@@ -94,6 +95,7 @@ class SimulationServer:
         self.simulator = MujocoSimulator(
             model_path=config.model_path,
             model_metadata=config.model_metadata,
+            actuator_catalog_path=config.actuator_catalog_path,
             dt=config.physics.dt,
             gravity=config.physics.gravity,
             render_mode="window" if config.rendering.render else "offscreen",
@@ -236,6 +238,7 @@ async def serve(
     mujoco_scene: str = "smooth",
 ) -> None:
     #local_model_dir = get_sim_artifacts_path() / model_name
+    actuator_catalog_path = Path("/Users/scott/Documents/kscale/working/kos-sim/kos_sim/kscale-assets/actuators/")
     local_model_dir = Path("/Users/scott/Documents/kscale/working/kos-sim/kos_sim/kscale-assets/")  / model_name
     print(f"local_model_dir: {local_model_dir}")
      # Check if local URDF exists
@@ -271,6 +274,7 @@ async def serve(
     config = SimulationServerConfig(
         model_path=model_path,
         model_metadata=model_metadata,
+        actuator_catalog_path=actuator_catalog_path,
         physics=physics,
         rendering=rendering,
         randomization=randomization,
