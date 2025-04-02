@@ -374,6 +374,7 @@ class MujocoSimulator:
         self._data.qvel[:] = qvel
         self._data.qacc[:] = qacc
         mujoco.mj_forward(self._model, self._data)
+        self._current_commands.clear()
 
     async def close(self) -> None:
         """Clean up simulation resources."""
