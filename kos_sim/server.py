@@ -237,32 +237,29 @@ async def serve(
     randomization: SimulationRandomizationConfig = SimulationRandomizationConfig(),
     mujoco_scene: str = "smooth",
 ) -> None:
-    #local_model_dir = get_sim_artifacts_path() / model_name
-    actuator_catalog_path = Path("/Users/scott/Documents/kscale/working/kos-sim/kos_sim/kscale-assets/actuators/")
-    local_model_dir = Path("/Users/scott/Documents/kscale/working/kos-sim/kos_sim/kscale-assets/")  / model_name
-    print(f"local_model_dir: {local_model_dir}")
-     # Check if local URDF exists
+    kscale_assets_path = os.getenv("KSCALE_ASSETS_PATH", str(Path(__file__).parent.parent / "kscale-assets"))
+    
+    actuator_catalog_path = Path(kscale_assets_path) / "actuators"
+    local_model_dir = Path(kscale_assets_path) / model_name
+    
+    logger.info(f"Using kscale assets path: {kscale_assets_path}")
+    logger.info(f"Local model directory: {local_model_dir}")
+    
+    # Check if local URDF exists
     urdf_files = list(local_model_dir.glob("*.mjcf")) or list(local_model_dir.glob("*.xml"))
-    print(f"urdf_files: {urdf_files}")
     if urdf_files and (local_model_dir / "metadata.json").exists():
         model_dir = local_model_dir
         with open(local_model_dir / "metadata.json", "r") as f:
             raw_meta = json.load(f)
             model_metadata = recursive_attrdict(raw_meta)
     else:
-        print("cancel: Downloading from API")
-    
+        logger.info("Local files not found, downloading from API")
         # Fallback: download from API if local files are not present
         async with K() as api:
             model_dir, model_metadata = await asyncio.gather(
                 api.download_and_extract_urdf(model_name),
                 get_model_metadata(api, model_name),
             )
-    #async with K() as api:
-    #    model_dir, model_metadata = await asyncio.gather(
-    #        api.download_and_extract_urdf(model_name),
-    #        get_model_metadata(api, model_name),
-    #    )
 
     model_path = next(
         itertools.chain(
