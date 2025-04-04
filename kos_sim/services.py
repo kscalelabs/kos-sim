@@ -136,7 +136,11 @@ class SimService(sim_pb2_grpc.SimulationServiceServicer):
         """Get all markers in the simulation."""
         markers = []
         for marker in self.simulator._markers.values():
+            assert marker.geom is not None
+            assert marker.tracking_cfg is not None
+
             geom_name = GEOM_TO_MARKER_MAPPING[marker.geom]
+
 
             markers.append(
                 sim_pb2.Marker(
@@ -214,6 +218,8 @@ class SimService(sim_pb2_grpc.SimulationServiceServicer):
             )
 
         existing_marker = self.simulator._markers[request.name]
+
+        assert existing_marker.tracking_cfg is not None
 
         if request.HasField("marker_type"):
             existing_marker.geom = MARKER_TO_GEOM_MAPPING[sim_pb2.Marker.MarkerType.Name(request.marker_type)]
