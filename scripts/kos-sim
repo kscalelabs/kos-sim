@@ -1,0 +1,2 @@
+#!/bin/bash
+mjpython -m kos_sim.server "$@" 
