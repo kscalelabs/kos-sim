@@ -190,7 +190,7 @@ class SimService(sim_pb2_grpc.SimulationServiceServicer):
         if marker.label:
             marker_params["label"] = marker.name
 
-        self.simulator._markers[marker.name] = MujocoViewerHandler.create_marker(**marker_params)  # type: ignore [attr-defined]
+        self.simulator._markers[marker.name] = MujocoViewerHandler.create_marker(**marker_params)
         return common_pb2.ActionResponse(success=True)
 
     async def RemoveMarker(  # noqa: N802
