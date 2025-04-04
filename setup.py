@@ -50,7 +50,7 @@ setup(
         "examples": requirements_examples,
     },
     packages=["kos_sim"],
-    # TODO: NEEd to account for macos vs other
+    # TODO: TEST IF THIS WORKS ON NON-MACOS
     scripts=["scripts/kos-sim"],
 
     # entry_points={

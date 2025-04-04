@@ -181,19 +181,6 @@ class MujocoSimulator:
                 )
             )
 
-        # for testing
-        self._markers = {
-            "test_marker": kmv.viewer.MujocoViewerHandler.create_marker(
-                name="test_marker",
-                model=self._model,
-                geom=mujoco.mjtGeom.mjGEOM_SPHERE,
-                track_body_name="KC_C_104L_PitchHardstopDriven",
-                scale=np.array([0.1, 0.1, 0.1]),
-                color=np.array([1, 1, 0, 0.8]),
-                label="KILL ME NOW",
-            ),
-        }
-
         if self._camera is not None and self._viewer is not None:
             camera_obj = self._model.camera(self._camera)
             self._viewer.setup_camera(
