@@ -70,7 +70,6 @@ def get_integrator(integrator: str) -> mujoco.mjtIntegrator:
 
 
 class MujocoSimulator:
-
     def __init__(
         self,
         model_path: str | Path,
@@ -181,7 +180,6 @@ class MujocoSimulator:
                     ctrl_dt=self._dt,
                 )
             )
-
 
         # for testing
         self._markers = {

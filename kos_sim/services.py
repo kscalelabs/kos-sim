@@ -4,8 +4,8 @@ import asyncio
 import math
 
 import grpc
-from google.protobuf import empty_pb2
 import numpy as np
+from google.protobuf import empty_pb2
 from kmv.viewer import MujocoViewerHandler
 from kos_protos import (
     actuator_pb2,
