@@ -141,7 +141,6 @@ class SimService(sim_pb2_grpc.SimulationServiceServicer):
 
             geom_name = GEOM_TO_MARKER_MAPPING[marker.geom]
 
-
             markers.append(
                 sim_pb2.Marker(
                     name=marker.name,
