@@ -7,8 +7,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal, NotRequired, TypedDict, TypeVar
 
+import kmv.utils.markers
+import kmv.viewer
 import mujoco
-import mujoco_viewer
 import numpy as np
 from kscale.web.gen.api import RobotURDFMetadataOutput
 from mujoco_scenes.mjcf import load_mjmodel
@@ -95,6 +96,7 @@ class MujocoSimulator:
         self._joint_vel_noise = math.radians(joint_vel_noise)
         self._update_pd_delta = 1.0 / pd_update_frequency
         self._camera = camera
+        self._markers: dict[str, kmv.utils.markers.TrackingMarker] = {}
 
         # Gets the sim decimation.
         if (control_frequency := self._metadata.control_frequency) is None:
@@ -155,18 +157,39 @@ class MujocoSimulator:
 
         # Setup viewer after initial step
         self._render_enabled = self._render_mode == "window"
-        self._viewer = mujoco_viewer.MujocoViewer(
-            self._model,
-            self._data,
-            mode=self._render_mode,
-            width=frame_width,
-            height=frame_height,
-        )
 
-        if self._camera is not None:
+        self._viewer = None
+
+        if self._render_enabled:
+            self._viewer = kmv.viewer.MujocoViewerHandler(
+                handle=kmv.viewer.launch_passive(
+                    self._model,
+                    self._data,
+                    render_width=frame_width,
+                    render_height=frame_height,
+                    ctrl_dt=self._dt,
+                )
+            )
+
+
+        # for testing
+        self._markers = {
+            "test_marker": kmv.viewer.MujocoViewerHandler.create_marker(
+                name="test_marker",
+                model=self._model,
+                geom=mujoco.mjtGeom.mjGEOM_SPHERE,
+                track_body_name="KC_C_104L_PitchHardstopDriven",
+                scale=np.array([0.1, 0.1, 0.1]),
+                color=np.array([1, 1, 0, 0.8]),
+                label="KILL ME NOW",
+            ),
+        }
+
+        if self._camera is not None and self._viewer is not None:
             camera_obj = self._model.camera(self._camera)
-            self._viewer.cam.type = mujoco.mjtCamera.mjCAMERA_TRACKING
-            self._viewer.cam.trackbodyid = camera_obj.id
+            self._viewer.setup_camera(
+                render_track_body_id=camera_obj.id,
+            )
 
         # Cache lookups after initialization
         self._sensor_name_to_id = {self._model.sensor(i).name: i for i in range(self._model.nsensor)}
@@ -248,7 +271,11 @@ class MujocoSimulator:
     async def render(self) -> None:
         """Render the simulation asynchronously."""
         if self._render_enabled:
-            self._viewer.render()
+            assert self._viewer is not None
+            for marker in self._markers.values():
+                self._viewer._markers.append(marker)
+
+            self._viewer.update_and_sync()
 
     async def capture_frame(self, camid: int = -1, depth: bool = False) -> tuple[np.ndarray, np.ndarray | None]:
         """Capture a frame from the simulation using read_pixels.
@@ -260,22 +287,25 @@ class MujocoSimulator:
         Returns:
             RGB image array (and optionally depth array) if depth=True
         """
-        if self._render_mode != "offscreen" and self._render_enabled:
-            logger.warning("Capturing frames is more efficient in offscreen mode")
+        return np.zeros((480, 640, 3), dtype=np.uint8), None
+        # if self._render_mode != "offscreen" and self._render_enabled:
+        #     logger.warning("Capturing frames is more efficient in offscreen mode")
 
-        if camid is not None:
-            if camid == -1:
-                self._viewer.cam.type = mujoco.mjtCamera.mjCAMERA_FREE
-            else:
-                self._viewer.cam.type = mujoco.mjtCamera.mjCAMERA_FIXED
-                self._viewer.cam.fixedcamid = camid
+        # if depth:
+        #     logger.warning("Depth is not currently supported")
 
-        if depth:
-            rgb, depth_img = self._viewer.read_pixels(depth=True)
-            return rgb, depth_img
-        else:
-            rgb = self._viewer.read_pixels()
-            return rgb, None
+        # for marker in self._markers.values():
+        #     self._viewer.add_marker(**marker)
+
+        # if camid is not None:
+        #     if camid == -1:
+        #         self._viewer.handle.cam.type = mujoco.mjtCamera.mjCAMERA_FREE
+        #     else:
+        #         self._viewer.handle.cam.type = mujoco.mjtCamera.mjCAMERA_FIXED
+        #         self._viewer.handle.cam.fixedcamid = camid
+
+        # rgb = self._viewer.read_pixels()
+        # return rgb, None
 
     async def get_sensor_data(self, name: str) -> np.ndarray:
         """Get data from a named sensor."""

@@ -50,9 +50,12 @@ setup(
         "examples": requirements_examples,
     },
     packages=["kos_sim"],
-    entry_points={
-        "console_scripts": [
-            "kos-sim=kos_sim.server:main",
-        ],
-    },
+    # TODO: NEEd to account for macos vs other
+    scripts=["scripts/kos-sim"],
+
+    # entry_points={
+    #     # "console_scripts": [
+    #     #     # "kos-sim=kos_sim.server:main",
+    #     # ],
+    # },
 )
