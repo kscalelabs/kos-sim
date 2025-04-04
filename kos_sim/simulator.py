@@ -18,6 +18,16 @@ from kos_sim import logger
 
 T = TypeVar("T")
 
+GEOM_TO_MARKER_MAPPING: dict[int, str] = {
+    mujoco.mjtGeom.mjGEOM_SPHERE: "SPHERE",
+    mujoco.mjtGeom.mjGEOM_BOX: "BOX",
+    mujoco.mjtGeom.mjGEOM_CAPSULE: "CAPSULE",
+    mujoco.mjtGeom.mjGEOM_CYLINDER: "CYLINDER",
+    mujoco.mjtGeom.mjGEOM_ARROW: "ARROW",
+}
+
+MARKER_TO_GEOM_MAPPING: dict[str, int] = {v: k for k, v in GEOM_TO_MARKER_MAPPING.items()}
+
 
 def _nn(value: T | None) -> T:
     if value is None:
@@ -60,6 +70,7 @@ def get_integrator(integrator: str) -> mujoco.mjtIntegrator:
 
 
 class MujocoSimulator:
+
     def __init__(
         self,
         model_path: str | Path,
@@ -287,6 +298,7 @@ class MujocoSimulator:
         Returns:
             RGB image array (and optionally depth array) if depth=True
         """
+        # TODO: Use native mujoco renderder for offline and shiiiiiiiiit
         return np.zeros((480, 640, 3), dtype=np.uint8), None
         # if self._render_mode != "offscreen" and self._render_enabled:
         #     logger.warning("Capturing frames is more efficient in offscreen mode")
