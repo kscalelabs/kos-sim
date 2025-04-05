@@ -10,7 +10,7 @@ import traceback
 from concurrent import futures
 from dataclasses import dataclass
 from pathlib import Path
-
+import json
 import colorlogging
 import grpc
 from kos_protos import actuator_pb2_grpc, imu_pb2_grpc, process_manager_pb2_grpc, sim_pb2_grpc
@@ -59,10 +59,32 @@ class SimulationServerConfig:
     physics: PhysicsConfig
     model_path: str | Path
     model_metadata: RobotURDFMetadataOutput
+    actuator_catalog_path: str | Path
     mujoco_scene: str = "smooth"
     host: str = "localhost"
     port: int = 50051
     sleep_time: float = 1e-6
+
+
+## Hack Helper Function to skip Metadata Kscale API during development
+class AttrDict(dict):
+    def __getattr__(self, key):
+        try:
+            return self[key]
+        except KeyError:
+            raise AttributeError(f"'AttrDict' object has no attribute {key}")
+
+    def __setattr__(self, key, value):
+        self[key] = value
+
+def recursive_attrdict(obj):
+    if isinstance(obj, dict):
+        return AttrDict({k: recursive_attrdict(v) for k, v in obj.items()})
+    elif isinstance(obj, list):
+        return [recursive_attrdict(i) for i in obj]
+    else:
+        return obj
+
 
 
 class SimulationServer:
@@ -73,6 +95,7 @@ class SimulationServer:
         self.simulator = MujocoSimulator(
             model_path=config.model_path,
             model_metadata=config.model_metadata,
+            actuator_catalog_path=config.actuator_catalog_path,
             dt=config.physics.dt,
             gravity=config.physics.gravity,
             render_mode="window" if config.rendering.render else "offscreen",
@@ -214,11 +237,29 @@ async def serve(
     randomization: SimulationRandomizationConfig = SimulationRandomizationConfig(),
     mujoco_scene: str = "smooth",
 ) -> None:
-    async with K() as api:
-        model_dir, model_metadata = await asyncio.gather(
-            api.download_and_extract_urdf(model_name),
-            get_model_metadata(api, model_name),
-        )
+    kscale_assets_path = os.getenv("KSCALE_ASSETS_PATH", str(Path(__file__).parent.parent / "kscale-assets"))
+    
+    actuator_catalog_path = Path(kscale_assets_path) / "actuators"
+    local_model_dir = Path(kscale_assets_path) / model_name
+    
+    logger.info(f"Using kscale assets path: {kscale_assets_path}")
+    logger.info(f"Local model directory: {local_model_dir}")
+    
+    # Check if local URDF exists
+    urdf_files = list(local_model_dir.glob("*.mjcf")) or list(local_model_dir.glob("*.xml"))
+    if urdf_files and (local_model_dir / "metadata.json").exists():
+        model_dir = local_model_dir
+        with open(local_model_dir / "metadata.json", "r") as f:
+            raw_meta = json.load(f)
+            model_metadata = recursive_attrdict(raw_meta)
+    else:
+        logger.info("Local files not found, downloading from API")
+        # Fallback: download from API if local files are not present
+        async with K() as api:
+            model_dir, model_metadata = await asyncio.gather(
+                api.download_and_extract_urdf(model_name),
+                get_model_metadata(api, model_name),
+            )
 
     if physics.suspended:
         model_path = next(
@@ -242,6 +283,7 @@ async def serve(
     config = SimulationServerConfig(
         model_path=model_path,
         model_metadata=model_metadata,
+        actuator_catalog_path=actuator_catalog_path,
         physics=physics,
         rendering=rendering,
         randomization=randomization,

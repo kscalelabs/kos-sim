@@ -15,6 +15,9 @@ from kscale.web.gen.api import RobotURDFMetadataOutput
 from mujoco_scenes.mjcf import load_mjmodel
 
 from kos_sim import logger
+from kos_sim.actuators import create_actuator, BaseActuator
+from kos_sim.types import ActuatorCommand, ConfigureActuatorRequest
+
 
 T = TypeVar("T")
 
@@ -34,25 +37,10 @@ def _nn(value: T | None) -> T:
         raise ValueError("Value is not set")
     return value
 
-
-class ConfigureActuatorRequest(TypedDict):
-    torque_enabled: NotRequired[bool]
-    zero_position: NotRequired[float]
-    kp: NotRequired[float]
-    kd: NotRequired[float]
-    max_torque: NotRequired[float]
-
-
 @dataclass
 class ActuatorState:
     position: float
     velocity: float
-
-
-class ActuatorCommand(TypedDict):
-    position: NotRequired[float]
-    velocity: NotRequired[float]
-    torque: NotRequired[float]
 
 
 def get_integrator(integrator: str) -> mujoco.mjtIntegrator:
@@ -74,6 +62,7 @@ class MujocoSimulator:
         self,
         model_path: str | Path,
         model_metadata: RobotURDFMetadataOutput,
+        actuator_catalog_path: str | Path,
         dt: float = 0.001,
         gravity: bool = True,
         render_mode: Literal["window", "offscreen"] = "window",
@@ -94,6 +83,7 @@ class MujocoSimulator:
         # Stores parameters.
         self._model_path = model_path
         self._metadata = model_metadata
+        self._actuator_catalog_path = actuator_catalog_path
         self._dt = dt
         self._gravity = gravity
         self._render_mode = render_mode
@@ -128,6 +118,16 @@ class MujocoSimulator:
             name: float(_nn(joint.kd)) for name, joint in self._metadata.joint_name_to_metadata.items()
         }
         self._joint_name_to_max_torque: dict[str, float] = {}
+
+        # Gets the Actuator Type for each joint.
+        self._joint_name_to_actuator_type: dict[str, str] = {
+            name: _nn(joint.actuator_type) for name, joint in self._metadata.joint_name_to_metadata.items()
+        }
+
+        # Create unique actuator instances keyed by actuator type.
+        self._actuator_instances: dict[str, BaseActuator] = {}
+        for actuator_type in set(self._joint_name_to_actuator_type.values()):
+            self._actuator_instances[actuator_type] = create_actuator(actuator_type, self._actuator_catalog_path)
 
         # Gets the inverse mapping.
         self._joint_id_to_name = {v: k for k, v in self._joint_name_to_id.items()}
@@ -169,6 +169,9 @@ class MujocoSimulator:
         # Important: Step simulation once to initialize internal structures
         mujoco.mj_forward(self._model, self._data)
         mujoco.mj_step(self._model, self._data)
+
+        # Configure actuator parameters based on metadata
+        self._configure_actuator_parameters()
 
         # Setup viewer after initial step
         self._render_enabled = self._render_mode == "window"
@@ -217,6 +220,7 @@ class MujocoSimulator:
         }
         self._next_commands: dict[str, tuple[ActuatorCommand, float]] = {}
 
+
     async def step(self) -> None:
         """Execute one step of the simulation."""
         self._sim_time += self._dt
@@ -239,18 +243,18 @@ class MujocoSimulator:
         for name, target_command in self._current_commands.items():
             joint_id = self._joint_name_to_id[name]
             actuator_id = self._joint_id_to_actuator_id[joint_id]
+            actuator_type = self._joint_name_to_actuator_type[name]
+            actuator = self._actuator_instances.get(actuator_type)
+            if actuator is None:
+                raise ValueError(f"Unsupported actuator type for joint {name}: '{actuator_type}'")
             kp = self._joint_name_to_kp[name]
             kd = self._joint_name_to_kd[name]
+            max_torque = self._joint_name_to_max_torque.get(name)
             current_position = self._data.joint(name).qpos
             current_velocity = self._data.joint(name).qvel
-            target_torque = (
-                kp * (target_command["position"] - current_position)
-                + kd * (target_command["velocity"] - current_velocity)
-                + target_command["torque"]
-            )
-            if (max_torque := self._joint_name_to_max_torque.get(name)) is not None:
-                target_torque = np.clip(target_torque, -max_torque, max_torque)
-            logger.debug("Setting ctrl for actuator %s to %f", actuator_id, target_torque)
+
+            target_torque = actuator.get_ctrl(kp, kd, target_command, current_position, current_velocity, max_torque, self._dt)
+            logger.debug("Setting ctrl for actuator %s [type: %s] to %f", actuator_id, actuator_type, target_torque)
             self._data.ctrl[actuator_id] = target_torque
 
         # Step physics - allow other coroutines to run during computation
@@ -417,3 +421,59 @@ class MujocoSimulator:
     @property
     def timestep(self) -> float:
         return self._model.opt.timestep
+
+    def _configure_actuator_parameters(self) -> None:
+        """Configure actuator parameters based on metadata."""
+        # Get parameters for each actuator type
+        actuator_params = {}
+        for actuator_type in set(self._joint_name_to_actuator_type.values()):
+            # Get the actuator instance for this type
+            actuator = self._actuator_instances.get(actuator_type)
+            if hasattr(actuator, "params"):
+                actuator_params[actuator_type] = actuator.params
+            else:
+                logger.warning(f"No parameters found for actuator type {actuator_type}")
+
+        # Apply parameters to each joint
+        for i in range(self._model.njnt):
+            joint_name = mujoco.mj_id2name(self._model, mujoco.mjtObj.mjOBJ_JOINT, i)
+            if joint_name is None:
+                logger.warning(f"Joint at index {i} has no name; skipping parameter assignment.")
+                continue
+
+            if joint_name not in self._joint_name_to_actuator_type:
+                logger.warning(f"Joint '{joint_name}' is missing in metadata; skipping parameter assignment.")
+                continue
+
+            actuator_type = self._joint_name_to_actuator_type[joint_name]
+            params = actuator_params.get(actuator_type)
+            if params is None:
+                logger.warning(f"No parameters for actuator type '{actuator_type}'; skipping parameter assignment for joint '{joint_name}'")
+                continue
+
+            dof_id = self._model.jnt_dofadr[i]
+
+            # Apply parameters based on actuator type
+            if "damping" in params:
+                self._model.dof_damping[dof_id] = params["damping"]
+            if "armature" in params:
+                self._model.dof_armature[dof_id] = params["armature"]
+            if "frictionloss" in params:
+                self._model.dof_frictionloss[dof_id] = params["frictionloss"]
+
+            # Configure actuator force ranges
+            actuator_name = f"{joint_name}_ctrl"
+            actuator_id = mujoco.mj_name2id(self._model, mujoco.mjtObj.mjOBJ_ACTUATOR, actuator_name)
+            if actuator_id >= 0 and "max_torque" in params:
+                max_torque = float(params["max_torque"])
+                self._model.actuator_forcerange[actuator_id, :] = [-max_torque, max_torque]
+                # Store max_torque for later use in control
+                self._joint_name_to_max_torque[joint_name] = max_torque
+            elif actuator_id >= 0:
+                # If max_torque not in params, use a reasonable default or extract from MuJoCo model
+                max_torque = float(self._model.actuator_forcerange[actuator_id, 1])
+                self._joint_name_to_max_torque[joint_name] = max_torque
+                logger.warning(f"Using force range from MuJoCo model for joint '{joint_name}': {max_torque}")
+            else:
+                logger.warning(f"No actuator found for joint '{joint_name}'; using default max_torque")
+                self._joint_name_to_max_torque[joint_name] = 5.0  # Default fallback
