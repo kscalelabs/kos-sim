@@ -229,10 +229,14 @@ async def serve(
         )
     else:
         model_path = next(
-            (path for path in itertools.chain(
-                model_dir.glob("*.mjcf"),
-                model_dir.glob("*.xml"),
-            ) if "suspended" not in path.name)
+            (
+                path
+                for path in itertools.chain(
+                    model_dir.glob("*.mjcf"),
+                    model_dir.glob("*.xml"),
+                )
+                if "suspended" not in path.name
+            )
         )
 
     config = SimulationServerConfig(
