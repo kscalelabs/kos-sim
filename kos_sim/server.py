@@ -76,7 +76,7 @@ class SimulationServer:
             dt=config.physics.dt,
             gravity=config.physics.gravity,
             render_mode="window" if config.rendering.render else "offscreen",
-            suspended=config.physics.suspended,
+            freejoint=config.physics.suspended,
             start_height=config.physics.start_height,
             command_delay_min=config.randomization.command_delay_min,
             command_delay_max=config.randomization.command_delay_max,
@@ -220,12 +220,24 @@ async def serve(
             get_model_metadata(api, model_name),
         )
 
-    model_path = next(
-        itertools.chain(
-            model_dir.glob("*.mjcf"),
-            model_dir.glob("*.xml"),
+    if physics.suspended:
+        model_path = next(
+            itertools.chain(
+                model_dir.glob("*.suspended.mjcf"),
+                model_dir.glob("*.suspended.xml"),
+            )
         )
-    )
+    else:
+        model_path = next(
+            (
+                path
+                for path in itertools.chain(
+                    model_dir.glob("*.mjcf"),
+                    model_dir.glob("*.xml"),
+                )
+                if "suspended" not in path.name
+            )
+        )
 
     config = SimulationServerConfig(
         model_path=model_path,
