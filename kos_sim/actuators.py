@@ -19,6 +19,7 @@ class BaseActuator:
         current_position: float,
         current_velocity: float,
         max_torque: float | None = None,
+        dt: float | None = None,
     ) -> float:
         raise NotImplementedError("Subclasses must implement get_ctrl.")
     
@@ -58,7 +59,19 @@ class FeetechActuator(BaseActuator):
     def __init__(self, actuator_type: str, model_dir: Path):
         self.params = load_feetech_config_from_catalog(actuator_type, model_dir)
         self.max_torque = self.params["max_torque"]
+        
+        # Store additional parameters
+        self.max_velocity = self.params.get("max_velocity", 10.0)  # Default if not specified
+        self.max_pwm = self.params.get("max_pwm", 1.0)  # Default max duty cycle if not specified 
+        self.vin = self.params.get("vin", 12.0)  # Default input voltage
+        self.kt = self.params.get("kt", 0.18)  # Default torque constant
+        self.R = self.params.get("R", 1.0)  # Default resistance
+        
+        # For velocity smoothing
+        self.dt = None  # Default, will be overridden if set
+        self.prev_target_position = None
 
+        # Error gain spline
         pos_errs = [d["pos_err"] for d in self.params["error_gain_data"]]
         gains = [d["error_gain"] for d in self.params["error_gain_data"]]
         self._pos_err_min = min(pos_errs)
@@ -78,14 +91,54 @@ class FeetechActuator(BaseActuator):
         current_position: float,
         current_velocity: float,
         max_torque: float | None = None,
+        dt: float | None = None,
     ) -> float:
-        pos_error = target_command.get("position", 0.0) - current_position
-        vel_error = target_command.get("velocity", 0.0) - current_velocity
-        dutycycle = (
+        # Use instance max_torque if none provided
+        if max_torque is None:
+            max_torque = self.max_torque
+            
+        # Get target position from command
+        target_position = target_command.get("position", current_position)
+        velocity_limit = target_command.get("velocity", 0.0)
+        
+        # Apply velocity smoothing based on max_velocity constraint
+        # Initialize prev_target_position if not already set
+        if self.prev_target_position is None:
+            self.prev_target_position = current_position
+            
+        max_delta_pos = self.max_velocity * dt
+        smoothed_position = np.clip(
+            target_position,
+            self.prev_target_position - max_delta_pos,
+            self.prev_target_position + max_delta_pos
+        )
+        
+        # Calculate expected velocity via numerical differentiation
+        expected_velocity = (smoothed_position - self.prev_target_position) / dt
+        
+        # Store for next iteration
+        self.prev_target_position = smoothed_position
+        
+        # Calculate errors
+        pos_error = smoothed_position - current_position
+        vel_error = expected_velocity - current_velocity
+        
+        # Calculate duty cycle with error gain scaling
+        raw_duty = (
             kp * self.error_gain(pos_error) * pos_error +
             kd * vel_error
         )
-        torque = np.clip(dutycycle * self.max_torque, -self.max_torque, self.max_torque)
+        
+        # Clip duty cycle based on max_pwm
+        duty = np.clip(raw_duty, -self.max_pwm, self.max_pwm)
+        
+        # Calculate voltage and torque using motor electrical model
+        voltage = duty * self.vin
+        torque = voltage * self.kt / self.R
+        
+        # Clip to max torque
+        torque = np.clip(torque, -max_torque, max_torque)
+        
         return torque
 
 
@@ -98,6 +151,7 @@ class RobstrideActuator(BaseActuator):
         current_position: float,
         current_velocity: float,
         max_torque: float | None = None,
+        dt: float | None = None,
     ) -> float:
         # Implement Robstride-specific control logic (PD control for now)
         target_torque = (

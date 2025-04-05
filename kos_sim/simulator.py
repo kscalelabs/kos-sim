@@ -225,11 +225,11 @@ class MujocoSimulator:
                 raise ValueError(f"Unsupported actuator type for joint {name}: '{actuator_type}'")
             kp = self._joint_name_to_kp[name]
             kd = self._joint_name_to_kd[name]
-            max_torque = 5 #Temp, until we integrate sysid motor params #self._joint_name_to_max_torque[name]
+            max_torque = self._joint_name_to_max_torque.get(name)
             current_position = self._data.joint(name).qpos
             current_velocity = self._data.joint(name).qvel
 
-            target_torque = actuator.get_ctrl(kp, kd, target_command, current_position, current_velocity, max_torque)
+            target_torque = actuator.get_ctrl(kp, kd, target_command, current_position, current_velocity, max_torque, self._dt)
             logger.debug("Setting ctrl for actuator %s [type: %s] to %f", actuator_id, actuator_type, target_torque)
             self._data.ctrl[actuator_id] = target_torque
 
@@ -378,6 +378,7 @@ class MujocoSimulator:
         self._data.qvel[:] = qvel
         self._data.qacc[:] = qacc
         mujoco.mj_forward(self._model, self._data)
+        self._current_commands.clear()
 
     async def close(self) -> None:
         """Clean up simulation resources."""
@@ -439,3 +440,11 @@ class MujocoSimulator:
                 self._model.actuator_forcerange[actuator_id, :] = [-max_torque, max_torque]
                 # Store max_torque for later use in control
                 self._joint_name_to_max_torque[joint_name] = max_torque
+            elif actuator_id >= 0:
+                # If max_torque not in params, use a reasonable default or extract from MuJoCo model
+                max_torque = float(self._model.actuator_forcerange[actuator_id, 1])
+                self._joint_name_to_max_torque[joint_name] = max_torque
+                logger.warning(f"Using force range from MuJoCo model for joint '{joint_name}': {max_torque}")
+            else:
+                logger.warning(f"No actuator found for joint '{joint_name}'; using default max_torque")
+                self._joint_name_to_max_torque[joint_name] = 5.0  # Default fallback
