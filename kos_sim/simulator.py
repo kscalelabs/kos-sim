@@ -77,7 +77,7 @@ class MujocoSimulator:
         dt: float = 0.001,
         gravity: bool = True,
         render_mode: Literal["window", "offscreen"] = "window",
-        suspended: bool = False,
+        freejoint: bool = False,
         start_height: float = 1.5,
         command_delay_min: float = 0.0,
         command_delay_max: float = 0.0,
@@ -97,7 +97,7 @@ class MujocoSimulator:
         self._dt = dt
         self._gravity = gravity
         self._render_mode = render_mode
-        self._suspended = suspended
+        self._freejoint = freejoint
         self._start_height = start_height
         self._command_delay_min = command_delay_min
         self._command_delay_max = command_delay_max
@@ -142,7 +142,9 @@ class MujocoSimulator:
 
         # Load MuJoCo model and initialize data
         logger.info("Loading model from %s", model_path)
+
         self._model = load_mjmodel(model_path, mujoco_scene)
+
         self._model.opt.timestep = self._dt
         self._model.opt.integrator = get_integrator(integrator)
         self._model.opt.solver = mujoco.mjtSolver.mjSOL_CG
@@ -155,9 +157,12 @@ class MujocoSimulator:
             self._model.opt.gravity[2] = 0.0
 
         # Initialize velocities and accelerations to zero
-        self._data.qpos[:3] = np.array([0.0, 0.0, self._start_height])
-        self._data.qpos[3:7] = np.array([0.0, 0.0, 0.0, 1.0])
-        self._data.qpos[7:] = np.zeros_like(self._data.qpos[7:])
+        if self._freejoint:
+            self._data.qpos[:3] = np.array([0.0, 0.0, self._start_height])
+            self._data.qpos[3:7] = np.array([0.0, 0.0, 0.0, 1.0])
+            self._data.qpos[7:] = np.zeros_like(self._data.qpos[7:])
+        else:
+            self._data.qpos[:] = np.zeros_like(self._data.qpos)
         self._data.qvel = np.zeros_like(self._data.qvel)
         self._data.qacc = np.zeros_like(self._data.qacc)
 
@@ -254,13 +259,6 @@ class MujocoSimulator:
         # It possibly computes some values that are needed for the step.
         mujoco.mj_forward(self._model, self._data)
         mujoco.mj_step(self._model, self._data)
-        if self._suspended:
-            # Find the root joint (floating_base)
-            for i in range(self._model.njnt):
-                if self._model.jnt_type[i] == mujoco.mjtJoint.mjJNT_FREE:
-                    self._data.qpos[i : i + 7] = [0.0, 0.0, self._start_height, 0.0, 0.0, 0.0, 1.0]
-                    self._data.qvel[i : i + 6] = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
-                    break
 
         return self._data
 
@@ -380,9 +378,13 @@ class MujocoSimulator:
 
         # Resets qpos.
         qpos = np.zeros_like(self._data.qpos)
-        qpos[:3] = np.array([0.0, 0.0, self._start_height] if xyz is None else xyz)
-        qpos[3:7] = np.array([0.0, 0.0, 0.0, 1.0] if quat is None else quat)
-        qpos[7:] = np.zeros_like(self._data.qpos[7:])
+        if self._freejoint:
+            qpos[:3] = np.array([0.0, 0.0, self._start_height] if xyz is None else xyz)
+            qpos[3:7] = np.array([0.0, 0.0, 0.0, 1.0] if quat is None else quat)
+            qpos[7:] = np.zeros_like(self._data.qpos[7:])
+        else:
+            qpos[:] = np.zeros_like(self._data.qpos)
+
         if joint_pos is not None:
             for joint_name, position in joint_pos.items():
                 self._data.joint(joint_name).qpos = position
