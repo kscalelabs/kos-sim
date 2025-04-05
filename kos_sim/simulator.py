@@ -153,6 +153,9 @@ class MujocoSimulator:
         mujoco.mj_forward(self._model, self._data)
         mujoco.mj_step(self._model, self._data)
 
+        # Configure actuator parameters based on metadata
+        self._configure_actuator_parameters()
+
         # Setup viewer after initial step
         self._render_enabled = self._render_mode == "window"
         self._viewer = mujoco_viewer.MujocoViewer(
@@ -388,3 +391,51 @@ class MujocoSimulator:
     @property
     def timestep(self) -> float:
         return self._model.opt.timestep
+
+    def _configure_actuator_parameters(self) -> None:
+        """Configure actuator parameters based on metadata."""
+        # Get parameters for each actuator type
+        actuator_params = {}
+        for actuator_type in set(self._joint_name_to_actuator_type.values()):
+            # Get the actuator instance for this type
+            actuator = self._actuator_instances.get(actuator_type)
+            if hasattr(actuator, "params"):
+                actuator_params[actuator_type] = actuator.params
+            else:
+                logger.warning(f"No parameters found for actuator type {actuator_type}")
+
+        # Apply parameters to each joint
+        for i in range(self._model.njnt):
+            joint_name = mujoco.mj_id2name(self._model, mujoco.mjtObj.mjOBJ_JOINT, i)
+            if joint_name is None:
+                logger.warning(f"Joint at index {i} has no name; skipping parameter assignment.")
+                continue
+
+            if joint_name not in self._joint_name_to_actuator_type:
+                logger.warning(f"Joint '{joint_name}' is missing in metadata; skipping parameter assignment.")
+                continue
+
+            actuator_type = self._joint_name_to_actuator_type[joint_name]
+            params = actuator_params.get(actuator_type)
+            if params is None:
+                logger.warning(f"No parameters for actuator type '{actuator_type}'; skipping parameter assignment for joint '{joint_name}'")
+                continue
+
+            dof_id = self._model.jnt_dofadr[i]
+
+            # Apply parameters based on actuator type
+            if "damping" in params:
+                self._model.dof_damping[dof_id] = params["damping"]
+            if "armature" in params:
+                self._model.dof_armature[dof_id] = params["armature"]
+            if "frictionloss" in params:
+                self._model.dof_frictionloss[dof_id] = params["frictionloss"]
+
+            # Configure actuator force ranges
+            actuator_name = f"{joint_name}_ctrl"
+            actuator_id = mujoco.mj_name2id(self._model, mujoco.mjtObj.mjOBJ_ACTUATOR, actuator_name)
+            if actuator_id >= 0 and "max_torque" in params:
+                max_torque = float(params["max_torque"])
+                self._model.actuator_forcerange[actuator_id, :] = [-max_torque, max_torque]
+                # Store max_torque for later use in control
+                self._joint_name_to_max_torque[joint_name] = max_torque
