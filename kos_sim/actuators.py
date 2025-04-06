@@ -99,36 +99,29 @@ class FeetechActuator(BaseActuator):
             
         # Get target position from command
         target_position = target_command.get("position", current_position)
-        velocity_limit = target_command.get("velocity", 0.0)
+        #velocity_limit = target_command.get("velocity", 0.0) # Not currently used
         
-        # Apply velocity smoothing based on max_velocity constraint
-        # Initialize prev_target_position if not already set
         if self.prev_target_position is None:
             self.prev_target_position = current_position
+            expected_velocity = 0.0  # First velocity should be 0
+        else:
+            # Differentiate delta pos to get velocity
+            expected_velocity = (target_position - self.prev_target_position) / dt
+            self.prev_target_position = target_position  # Update for next time
             
-        max_delta_pos = self.max_velocity * dt
-        smoothed_position = np.clip(
-            target_position,
-            self.prev_target_position - max_delta_pos,
-            self.prev_target_position + max_delta_pos
-        )
-        
-        # Calculate expected velocity via numerical differentiation
-        expected_velocity = (smoothed_position - self.prev_target_position) / dt
-        
-        # Store for next iteration
-        self.prev_target_position = smoothed_position
-        
+        self.prev_target_position = target_position 
+
         # Calculate errors
-        pos_error = smoothed_position - current_position
+        pos_error = target_position - current_position
         vel_error = expected_velocity - current_velocity
-        
+
+
         # Calculate duty cycle with error gain scaling
         raw_duty = (
             kp * self.error_gain(pos_error) * pos_error +
             kd * vel_error
         )
-        
+
         # Clip duty cycle based on max_pwm
         duty = np.clip(raw_duty, -self.max_pwm, self.max_pwm)
         
