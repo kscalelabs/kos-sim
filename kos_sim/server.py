@@ -50,7 +50,6 @@ class PhysicsConfig:
     suspended: bool = False
     start_height: float = 1.5
     dt: float = 0.0001
-    fixed_base: bool = False
 
 
 @dataclass
@@ -102,7 +101,6 @@ class SimulationServer:
             render_mode="window" if config.rendering.render else "offscreen",
             suspended=config.physics.suspended,
             start_height=config.physics.start_height,
-            fixed_base=config.physics.fixed_base,
             command_delay_min=config.randomization.command_delay_min,
             command_delay_max=config.randomization.command_delay_max,
             joint_pos_delta_noise=config.randomization.joint_pos_delta_noise,
@@ -305,7 +303,6 @@ async def run_server() -> None:
     parser.add_argument("--video-output-dir", type=str, default="videos", help="Directory to save videos")
     parser.add_argument("--frame-width", type=int, default=640, help="Frame width")
     parser.add_argument("--frame-height", type=int, default=480, help="Frame height")
-    parser.add_argument("--fixed-base", action="store_true", help="Use fixed base instead of floating base")
 
     args = parser.parse_args()
 
@@ -320,7 +317,6 @@ async def run_server() -> None:
     render_frequency = args.render_frequency
     suspended = args.suspended
     start_height = args.start_height
-    fixed_base = args.fixed_base
     command_delay_min = args.command_delay_min
     command_delay_max = args.command_delay_max
     joint_pos_delta_noise = args.joint_pos_delta_noise
@@ -341,7 +337,6 @@ async def run_server() -> None:
     logger.info("Render frequency: %f", render_frequency)
     logger.info("Suspended: %s", suspended)
     logger.info("Start height: %f", start_height)
-    logger.info("Fixed base: %s", fixed_base)
     logger.info("Command delay min: %f", command_delay_min)
     logger.info("Command delay max: %f", command_delay_max)
     logger.info("Joint pos delta noise: %f", joint_pos_delta_noise)
@@ -370,7 +365,6 @@ async def run_server() -> None:
         gravity=gravity,
         suspended=suspended,
         start_height=start_height,
-        fixed_base=fixed_base,
     )
 
     randomization = SimulationRandomizationConfig(
