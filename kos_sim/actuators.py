@@ -103,18 +103,14 @@ class FeetechActuator(BaseActuator):
         
         if self.prev_target_position is None:
             self.prev_target_position = current_position
-            expected_velocity = 0.0  # First velocity should be 0
-        else:
-            # Differentiate delta pos to get velocity
-            expected_velocity = (target_position - self.prev_target_position) / dt
-            self.prev_target_position = target_position  # Update for next time
-            
-        self.prev_target_position = target_position 
 
+        # Differentiate target position to get velocity
+        expected_velocity = (target_position - self.prev_target_position) / dt
+        self.prev_target_position = target_position  # Update for next time
+            
         # Calculate errors
         pos_error = target_position - current_position
         vel_error = expected_velocity - current_velocity
-
 
         # Calculate duty cycle with error gain scaling
         raw_duty = (
