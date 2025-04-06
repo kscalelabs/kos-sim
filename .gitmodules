@@ -1,0 +1,3 @@
+[submodule "kscale-assets"]
+    path = kscale-assets
+    url = https://github.com/kscalelabs/kscale-assets.git
