@@ -44,8 +44,6 @@ def get_integrator(integrator: str) -> mujoco.mjtIntegrator:
             return mujoco.mjtIntegrator.mjINT_RK4
         case _:
             raise ValueError(f"Invalid integrator: {integrator}")
-
-
 class MujocoSimulator:
     def __init__(
         self,
@@ -68,6 +66,7 @@ class MujocoSimulator:
         camera: str | None = None,
         frame_width: int = 640,
         frame_height: int = 480,
+        fixed_base: bool = False,
     ) -> None:
         # Stores parameters.
         self._model_path = model_path
@@ -85,6 +84,7 @@ class MujocoSimulator:
         self._joint_vel_noise = math.radians(joint_vel_noise)
         self._update_pd_delta = 1.0 / pd_update_frequency
         self._camera = camera
+        self._fixed_base = fixed_base
 
         # Gets the sim decimation.
         if (control_frequency := self._metadata.control_frequency) is None:
@@ -113,9 +113,15 @@ class MujocoSimulator:
         }
 
         # Create unique actuator instances keyed by actuator type.
-        self._actuator_instances: dict[str, BaseActuator] = {}
-        for actuator_type in set(self._joint_name_to_actuator_type.values()):
-            self._actuator_instances[actuator_type] = create_actuator(actuator_type, self._actuator_catalog_path)
+        self._actuator_instances: dict[int, BaseActuator] = {}  # Keyed by actuator ID
+         # Create an actuator instance for each joint
+        for joint_name, joint_metadata in self._metadata.joint_name_to_metadata.items():
+            actuator_type = _nn(joint_metadata.actuator_type)
+            joint_id = _nn(joint_metadata.id)
+            
+            # Create a unique actuator instance for this joint
+            self._actuator_instances[joint_id] = create_actuator(actuator_type, self._actuator_catalog_path)
+            logger.info(f"Created actuator instance for joint '{joint_name}' (ID: {joint_id}, Type: {actuator_type})")
 
         # Gets the inverse mapping.
         self._joint_id_to_name = {v: k for k, v in self._joint_name_to_id.items()}
@@ -130,22 +136,32 @@ class MujocoSimulator:
 
         # Load MuJoCo model and initialize data
         logger.info("Loading model from %s", model_path)
-        self._model = load_mjmodel(model_path, mujoco_scene)
+        if not self._fixed_base:
+            self._model = load_mjmodel(model_path, mujoco_scene)
+        else:
+            self._model = mujoco.MjModel.from_xml_path(str(model_path))
         self._model.opt.timestep = self._dt
         self._model.opt.integrator = get_integrator(integrator)
         self._model.opt.solver = mujoco.mjtSolver.mjSOL_CG
 
         self._data = mujoco.MjData(self._model)
 
+        #self._validate_model_structure()
+
         logger.info("Joint ID to name: %s", self._joint_id_to_name)
 
         if not self._gravity:
             self._model.opt.gravity[2] = 0.0
+                
+        # Initialize state vectors based on joint configuration
+        if not self._fixed_base:
+            self._data.qpos[:3] = np.array([0.0, 0.0, self._start_height])
+            self._data.qpos[3:7] = np.array([0.0, 0.0, 0.0, 1.0])
+            self._data.qpos[7:] = np.zeros_like(self._data.qpos[7:])
+        else:
+            self._data.qpos[:] = np.zeros_like(self._data.qpos)
 
-        # Initialize velocities and accelerations to zero
-        self._data.qpos[:3] = np.array([0.0, 0.0, self._start_height])
-        self._data.qpos[3:7] = np.array([0.0, 0.0, 0.0, 1.0])
-        self._data.qpos[7:] = np.zeros_like(self._data.qpos[7:])
+
         self._data.qvel = np.zeros_like(self._data.qvel)
         self._data.qacc = np.zeros_like(self._data.qacc)
 
@@ -219,10 +235,9 @@ class MujocoSimulator:
         for name, target_command in self._current_commands.items():
             joint_id = self._joint_name_to_id[name]
             actuator_id = self._joint_id_to_actuator_id[joint_id]
-            actuator_type = self._joint_name_to_actuator_type[name]
-            actuator = self._actuator_instances.get(actuator_type)
+            actuator = self._actuator_instances.get(joint_id)
             if actuator is None:
-                raise ValueError(f"Unsupported actuator type for joint {name}: '{actuator_type}'")
+                raise ValueError(f"Unsupported actuator type for joint {name}: '{joint_id}'")
             kp = self._joint_name_to_kp[name]
             kd = self._joint_name_to_kd[name]
             max_torque = self._joint_name_to_max_torque.get(name)
@@ -230,7 +245,6 @@ class MujocoSimulator:
             current_velocity = self._data.joint(name).qvel
 
             target_torque = actuator.get_ctrl(kp, kd, target_command, current_position, current_velocity, max_torque, self._dt)
-            logger.debug("Setting ctrl for actuator %s [type: %s] to %f", actuator_id, actuator_type, target_torque)
             self._data.ctrl[actuator_id] = target_torque
 
         # Step physics - allow other coroutines to run during computation
@@ -357,9 +371,14 @@ class MujocoSimulator:
 
         # Resets qpos.
         qpos = np.zeros_like(self._data.qpos)
-        qpos[:3] = np.array([0.0, 0.0, self._start_height] if xyz is None else xyz)
-        qpos[3:7] = np.array([0.0, 0.0, 0.0, 1.0] if quat is None else quat)
-        qpos[7:] = np.zeros_like(self._data.qpos[7:])
+
+        if not self._fixed_base:
+            qpos[:3] = np.array([0.0, 0.0, self._start_height] if xyz is None else xyz)
+            qpos[3:7] = np.array([0.0, 0.0, 0.0, 1.0] if quat is None else quat)
+            qpos[7:] = np.zeros_like(self._data.qpos[7:])
+        else:
+            qpos[:] = np.zeros_like(self._data.qpos)
+
         if joint_pos is not None:
             for joint_name, position in joint_pos.items():
                 self._data.joint(joint_name).qpos = position
@@ -395,16 +414,6 @@ class MujocoSimulator:
 
     def _configure_actuator_parameters(self) -> None:
         """Configure actuator parameters based on metadata."""
-        # Get parameters for each actuator type
-        actuator_params = {}
-        for actuator_type in set(self._joint_name_to_actuator_type.values()):
-            # Get the actuator instance for this type
-            actuator = self._actuator_instances.get(actuator_type)
-            if hasattr(actuator, "params"):
-                actuator_params[actuator_type] = actuator.params
-            else:
-                logger.warning(f"No parameters found for actuator type {actuator_type}")
-
         # Apply parameters to each joint
         for i in range(self._model.njnt):
             joint_name = mujoco.mj_id2name(self._model, mujoco.mjtObj.mjOBJ_JOINT, i)
@@ -416,12 +425,18 @@ class MujocoSimulator:
                 logger.warning(f"Joint '{joint_name}' is missing in metadata; skipping parameter assignment.")
                 continue
 
-            actuator_type = self._joint_name_to_actuator_type[joint_name]
-            params = actuator_params.get(actuator_type)
-            if params is None:
-                logger.warning(f"No parameters for actuator type '{actuator_type}'; skipping parameter assignment for joint '{joint_name}'")
+            joint_id = self._joint_name_to_id[joint_name]
+            actuator = self._actuator_instances.get(joint_id)
+
+            if actuator is None:
+                logger.warning(f"No actuator instance found for joint '{joint_name}' (ID: {joint_id})")
                 continue
 
+            if not hasattr(actuator, "params"):
+                logger.warning(f"No parameters available for joint '{joint_name}' (ID: {joint_id})")
+                continue
+
+            params = actuator.params
             dof_id = self._model.jnt_dofadr[i]
 
             # Apply parameters based on actuator type
@@ -448,3 +463,59 @@ class MujocoSimulator:
             else:
                 logger.warning(f"No actuator found for joint '{joint_name}'; using default max_torque")
                 self._joint_name_to_max_torque[joint_name] = 5.0  # Default fallback
+
+    def print_joint_info(self) -> None:
+        """Print detailed information about each joint in the simulation."""
+        for joint_name in self._joint_name_to_id.keys():
+            # Get basic joint info
+            actuator_type = self._joint_name_to_actuator_type[joint_name]
+            kp = self._joint_name_to_kp[joint_name]
+            kd = self._joint_name_to_kd[joint_name]
+            joint_id = self._joint_name_to_id[joint_name]
+            
+            # Get joint ID and DOF address
+            mujoco_joint_id = mujoco.mj_name2id(self._model, mujoco.mjtObj.mjOBJ_JOINT, joint_name)
+            dof_id = self._model.jnt_dofadr[mujoco_joint_id]
+            
+            # Get mechanical properties
+            damping = self._model.dof_damping[dof_id]
+            frictionloss = self._model.dof_frictionloss[dof_id]
+            armature = self._model.dof_armature[dof_id]
+            
+            # Get actuator info
+            actuator_name = f"{joint_name}_ctrl"
+            actuator_id = mujoco.mj_name2id(self._model, mujoco.mjtObj.mjOBJ_ACTUATOR, actuator_name)
+            
+            line = (
+                f"Joint: {joint_name:<20} | Joint ID: {joint_id!s:<3} | "
+                f"Damping: {damping:6.3f} | Armature: {armature:6.3f} | "
+                f"Friction: {frictionloss:6.3f}"
+            )
+            
+            if actuator_id >= 0:
+                forcerange = self._model.actuator_forcerange[actuator_id]
+                line += (
+                    f" | Actuator: {actuator_name:<20} (ID: {actuator_id:2d}) | "
+                    f"Forcerange: [{forcerange[0]:6.3f}, {forcerange[1]:6.3f}] | "
+                    f"Kp: {kp:6.3f} | Kd: {kd:6.3f}"
+                )
+            else:
+                line += " | Actuator: N/A (passive joint)"
+                
+            print(line)
+
+
+    def _check_floating_base(self) -> tuple[bool, int]:
+        """Check if model has a floating base joint and return its details.
+        
+        Returns:
+            tuple: (has_floating_base: bool, floating_base_id: int)
+        """
+        try:
+            floating_base_id = next(
+                i for i in range(self._model.njnt) 
+                if self._model.jnt_type[i] == mujoco.mjtJoint.mjJNT_FREE
+            )
+            return True, floating_base_id
+        except StopIteration:
+            return False, -1

@@ -9,6 +9,7 @@ import json
 from pathlib import Path
 from typing import TypedDict, List, Dict
 from kos_sim.types import ActuatorCommand
+from kos_sim import logger
 
 class BaseActuator:
     def get_ctrl(
@@ -78,6 +79,13 @@ class FeetechActuator(BaseActuator):
         self._pos_err_max = max(pos_errs)
         self._error_gain_spline = CubicSpline(pos_errs, gains, extrapolate=True)
 
+        logger.info(
+            f"Initializing FeetechActuator with params: "
+            f"max_torque={self.max_torque}, "
+            f"max_pwm={self.params.get('max_pwm', 1.0)}, "
+            f"vin={self.params.get('vin', 12.0)}"
+        )
+
     def error_gain(self, error: float) -> float:
         abs_error = abs(error)
         clamped_error = np.clip(abs_error, self._pos_err_min, self._pos_err_max)
@@ -93,28 +101,30 @@ class FeetechActuator(BaseActuator):
         max_torque: float | None = None,
         dt: float | None = None,
     ) -> float:
+        
+        
         # Use instance max_torque if none provided
         if max_torque is None:
             max_torque = self.max_torque
             
         # Get target position from command
         target_position = target_command.get("position", current_position)
-        #velocity_limit = target_command.get("velocity", 0.0) # Not currently used
-        
+
         if self.prev_target_position is None:
             self.prev_target_position = current_position
 
         # Differentiate target position to get velocity
         expected_velocity = (target_position - self.prev_target_position) / dt
-        self.prev_target_position = target_position  # Update for next time
+        self.prev_target_position = target_position 
             
         # Calculate errors
         pos_error = target_position - current_position
         vel_error = expected_velocity - current_velocity
 
         # Calculate duty cycle with error gain scaling
+        error_gain = self.error_gain(pos_error)
         raw_duty = (
-            kp * self.error_gain(pos_error) * pos_error +
+            kp * error_gain * pos_error +
             kd * vel_error
         )
 
@@ -127,7 +137,18 @@ class FeetechActuator(BaseActuator):
         
         # Clip to max torque
         torque = np.clip(torque, -max_torque, max_torque)
-        
+
+        # Log all interesting values in one consolidated message
+        #logger.info(
+        #    "State: pos=(target=%.3f, current=%.3f, error=%.3f) "
+        #    "vel=(expected=%.3f, current=%.3f, error=%.3f) "
+        #    "control=(gain=%.3f, kp=%.3f, kd=%.3f, duty=%.3f/%.3f) "
+        #    "motor=(V=%.3f/%.3f, kt=%.3f, R=%.3f, torque=%.3f/%.3f)",
+        #    target_position, current_position, pos_error,
+        #    expected_velocity, current_velocity, vel_error,
+        #    error_gain, kp, kd, duty, self.max_pwm,
+        #    voltage, self.vin, self.kt, self.R, torque, max_torque
+        #)
         return torque
 
 
@@ -148,6 +169,7 @@ class RobstrideActuator(BaseActuator):
             + kd * (target_command.get("velocity", 0.0) - current_velocity)
             + target_command.get("torque", 0.0)
         )
+
         if max_torque is not None:
             target_torque = np.clip(target_torque, -max_torque, max_torque)
         return target_torque
