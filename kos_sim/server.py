@@ -3,6 +3,7 @@
 import argparse
 import asyncio
 import itertools
+import json
 import logging
 import os
 import time
@@ -10,7 +11,8 @@ import traceback
 from concurrent import futures
 from dataclasses import dataclass
 from pathlib import Path
-import json
+from typing import TypeVar
+
 import colorlogging
 import grpc
 from kos_protos import actuator_pb2_grpc, imu_pb2_grpc, process_manager_pb2_grpc, sim_pb2_grpc
@@ -66,25 +68,28 @@ class SimulationServerConfig:
     sleep_time: float = 1e-6
 
 
+T = TypeVar("T")
+
+
 ## Hack Helper Function to skip Metadata Kscale API during development
 class AttrDict(dict):
-    def __getattr__(self, key):
+    def __getattr__(self, key: str) -> T:
         try:
             return self[key]
         except KeyError:
             raise AttributeError(f"'AttrDict' object has no attribute {key}")
 
-    def __setattr__(self, key, value):
+    def __setattr__(self, key: str, value: T) -> None:
         self[key] = value
 
-def recursive_attrdict(obj):
+
+def recursive_attrdict(obj: dict | list | T) -> T:
     if isinstance(obj, dict):
         return AttrDict({k: recursive_attrdict(v) for k, v in obj.items()})
     elif isinstance(obj, list):
         return [recursive_attrdict(i) for i in obj]
     else:
         return obj
-
 
 
 class SimulationServer:
@@ -238,13 +243,13 @@ async def serve(
     mujoco_scene: str = "smooth",
 ) -> None:
     kscale_assets_path = os.getenv("KSCALE_ASSETS_PATH", str(Path(__file__).parent.parent / "kscale-assets"))
-    
+
     actuator_catalog_path = Path(kscale_assets_path) / "actuators"
     local_model_dir = Path(kscale_assets_path) / model_name
-    
+
     logger.info(f"Using kscale assets path: {kscale_assets_path}")
     logger.info(f"Local model directory: {local_model_dir}")
-    
+
     # Check if local URDF exists
     urdf_files = list(local_model_dir.glob("*.mjcf")) or list(local_model_dir.glob("*.xml"))
     if urdf_files and (local_model_dir / "metadata.json").exists():

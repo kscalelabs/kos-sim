@@ -1,16 +1,14 @@
-from scipy.optimize import curve_fit
-import pandas as pd
-import numpy as np
-
-from typing import Dict
-import numpy as np
+"""Actuator models for KOS-Sim."""
 
 import json
 from pathlib import Path
-from typing import TypedDict, List, Dict
-from kos_sim.types import ActuatorCommand
-from kos_sim import logger
+from typing import Dict, List, TypedDict
 
+import numpy as np
+from scipy.optimize import curve_fit
+
+from kos_sim import logger
+from kos_sim.types import ActuatorCommand
 
 
 class BaseActuator:
@@ -25,7 +23,7 @@ class BaseActuator:
         dt: float | None = None,
     ) -> float:
         raise NotImplementedError("Subclasses must implement get_ctrl.")
-    
+
 
 class FeetechParams(TypedDict):
     sysid: str
@@ -38,7 +36,9 @@ class FeetechParams(TypedDict):
     R: float
     error_gain_data: List[Dict[str, float]]
 
+
 _feetech_config_cache: Dict[str, FeetechParams] = {}
+
 
 def load_feetech_config_from_catalog(actuator_type: str, base_path: Path) -> FeetechParams:
     catalog_path = base_path / "catalog.json"
@@ -58,18 +58,19 @@ def load_feetech_config_from_catalog(actuator_type: str, base_path: Path) -> Fee
     _feetech_config_cache[actuator_type] = data
     return data
 
+
 class FeetechActuator(BaseActuator):
-    def __init__(self, actuator_type: str, model_dir: Path):
+    def __init__(self, actuator_type: str, model_dir: Path) -> None:
         self.params = load_feetech_config_from_catalog(actuator_type, model_dir)
         self.max_torque = self.params["max_torque"]
-        
+
         # Store additional parameters
         self.max_velocity = self.params.get("max_velocity", 10.0)  # Default if not specified
-        self.max_pwm = self.params.get("max_pwm", 1.0)  # Default max duty cycle if not specified 
+        self.max_pwm = self.params.get("max_pwm", 1.0)  # Default max duty cycle if not specified
         self.vin = self.params.get("vin", 12.0)  # Default input voltage
         self.kt = self.params.get("kt", 0.18)  # Default torque constant
         self.R = self.params.get("R", 1.0)  # Default resistance
-        
+
         # For velocity smoothing
         self.dt = None  # Default, will be overridden if set
         self.prev_target_position = None
@@ -90,13 +91,14 @@ class FeetechActuator(BaseActuator):
                 error_data_sorted = sorted(error_data, key=lambda d: d["pos_err"])
                 pos_errs = np.array([d["pos_err"] for d in error_data_sorted])
                 gains = np.array([d["error_gain"] for d in error_data_sorted])
-                
+
                 # Store min/max position errors for clamping
                 self._pos_err_min = float(np.min(pos_errs))
                 self._pos_err_max = float(np.max(pos_errs))
 
-                def inverse_func(x, a, b):
-                    return a/x + b
+                def inverse_func(x: float, a: float, b: float) -> float:
+                    return a / x + b
+
                 popt, _ = curve_fit(inverse_func, pos_errs, gains)
                 self.a_param, self.b_param = popt
                 logger.info(
@@ -134,12 +136,10 @@ class FeetechActuator(BaseActuator):
         max_torque: float | None = None,
         dt: float | None = None,
     ) -> float:
-        
-        
         # Use instance max_torque if none provided
         if max_torque is None:
             max_torque = self.max_torque
-            
+
         # Get target position from command
         target_position = target_command.get("position", current_position)
 
@@ -148,26 +148,23 @@ class FeetechActuator(BaseActuator):
 
         # Differentiate target position to get velocity
         expected_velocity = (target_position - self.prev_target_position) / dt
-        self.prev_target_position = target_position 
-            
+        self.prev_target_position = target_position
+
         # Calculate errors
         pos_error = target_position - current_position
         vel_error = expected_velocity - current_velocity
 
         # Calculate duty cycle with error gain scaling
         error_gain = self.error_gain(pos_error)
-        raw_duty = (
-            kp * error_gain * pos_error +
-            kd * vel_error
-        )
+        raw_duty = kp * error_gain * pos_error + kd * vel_error
 
         # Clip duty cycle based on max_pwm
         duty = np.clip(raw_duty, -self.max_pwm, self.max_pwm)
-        
+
         # Calculate voltage and torque using motor electrical model
         voltage = duty * self.vin
         torque = voltage * self.kt / self.R
-        
+
         # Clip to max torque
         torque = np.clip(torque, -max_torque, max_torque)
 
@@ -199,12 +196,10 @@ class RobstrideActuator(BaseActuator):
 
 def create_actuator(actuator_type: str, model_dir: Path) -> BaseActuator:
     actuator_type = actuator_type.lower()
-    
+
     if actuator_type.startswith("robstride"):
         return RobstrideActuator()
     elif actuator_type.startswith("feetech"):
         return FeetechActuator(actuator_type, model_dir)
     else:
         raise ValueError(f"Unsupported actuator type: {actuator_type}")
-
-
