@@ -1,4 +1,4 @@
-from scipy.interpolate import CubicSpline
+from scipy.optimize import curve_fit
 import pandas as pd
 import numpy as np
 
@@ -10,6 +10,8 @@ from pathlib import Path
 from typing import TypedDict, List, Dict
 from kos_sim.types import ActuatorCommand
 from kos_sim import logger
+
+
 
 class BaseActuator:
     def get_ctrl(
@@ -72,24 +74,55 @@ class FeetechActuator(BaseActuator):
         self.dt = None  # Default, will be overridden if set
         self.prev_target_position = None
 
-        # Error gain spline
-        pos_errs = [d["pos_err"] for d in self.params["error_gain_data"]]
-        gains = [d["error_gain"] for d in self.params["error_gain_data"]]
-        self._pos_err_min = min(pos_errs)
-        self._pos_err_max = max(pos_errs)
-        self._error_gain_spline = CubicSpline(pos_errs, gains, extrapolate=True)
+        # Default a/x + b parameters
+        self.a_param = 0.00005502  # Default value (STS3250)
+        self.b_param = 0.16293639  # Default value (STS3250)
+        self._pos_err_min = 0.001
+        self._pos_err_max = 0.15
+
+        # Extract error gain data and fit a/x + b curve
+        error_data = self.params["error_gain_data"]
+        if error_data and len(error_data) <= 3:
+            logger.warning(f"Not enough error gain data for {actuator_type}. Using default values.")
+        else:
+            try:
+                # Sort by position error
+                error_data_sorted = sorted(error_data, key=lambda d: d["pos_err"])
+                pos_errs = np.array([d["pos_err"] for d in error_data_sorted])
+                gains = np.array([d["error_gain"] for d in error_data_sorted])
+                
+                # Store min/max position errors for clamping
+                self._pos_err_min = float(np.min(pos_errs))
+                self._pos_err_max = float(np.max(pos_errs))
+
+                def inverse_func(x, a, b):
+                    return a/x + b
+                popt, _ = curve_fit(inverse_func, pos_errs, gains)
+                self.a_param, self.b_param = popt
+                logger.info(
+                    f"Actuator {actuator_type}: Fitted parameters a={self.a_param:.6f}, b={self.b_param:.6f}, "
+                    f"error range [{self._pos_err_min:.6f}, {self._pos_err_max:.6f}]"
+                )
+            except Exception as e:
+                logger.warning(f"Error fitting curve for {actuator_type}: {e}. Using default values.")
+                # Use defaults if fitting fails
+                self._pos_err_min = 0.001
+                self._pos_err_max = 0.15
 
         logger.info(
             f"Initializing FeetechActuator with params: "
             f"max_torque={self.max_torque}, "
             f"max_pwm={self.params.get('max_pwm', 1.0)}, "
-            f"vin={self.params.get('vin', 12.0)}"
+            f"vin={self.params.get('vin', 12.0)}, "
+            f"a={self.a_param:.6f}, b={self.b_param:.6f}"
         )
 
     def error_gain(self, error: float) -> float:
         abs_error = abs(error)
+        # Clamp to the min/max range from error data (matching firmware behavior)
         clamped_error = np.clip(abs_error, self._pos_err_min, self._pos_err_max)
-        return self._error_gain_spline(clamped_error)
+        # Use reciprocal function a/x + b
+        return self.a_param / clamped_error + self.b_param
 
     def get_ctrl(
         self,
@@ -138,17 +171,6 @@ class FeetechActuator(BaseActuator):
         # Clip to max torque
         torque = np.clip(torque, -max_torque, max_torque)
 
-        # Log all interesting values in one consolidated message
-        #logger.info(
-        #    "State: pos=(target=%.3f, current=%.3f, error=%.3f) "
-        #    "vel=(expected=%.3f, current=%.3f, error=%.3f) "
-        #    "control=(gain=%.3f, kp=%.3f, kd=%.3f, duty=%.3f/%.3f) "
-        #    "motor=(V=%.3f/%.3f, kt=%.3f, R=%.3f, torque=%.3f/%.3f)",
-        #    target_position, current_position, pos_error,
-        #    expected_velocity, current_velocity, vel_error,
-        #    error_gain, kp, kd, duty, self.max_pwm,
-        #    voltage, self.vin, self.kt, self.R, torque, max_torque
-        #)
         return torque
 
 
