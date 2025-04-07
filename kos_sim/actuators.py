@@ -109,7 +109,7 @@ class FeetechActuator(BaseActuator):
                 self._pos_err_min = 0.001
                 self._pos_err_max = 0.15
 
-        logger.info(
+        logger.debug(
             f"Initializing FeetechActuator with params: "
             f"max_torque={self.max_torque}, "
             f"max_pwm={self.params.get('max_pwm', 1.0)}, "
