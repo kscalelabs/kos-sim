@@ -37,12 +37,14 @@ def test_feetech_actuator_basic(actuator_type): # Removed check_asset_files depe
     assert hasattr(feetech_actuator, 'max_torque')
     assert isinstance(feetech_actuator.max_torque, float)
     
-    kp = 100.0
+    kp = 20.0
     kd = 5.0
     target_command: ActuatorCommand = {"position": 1.0} # Target position 1.0 rad
     current_position = 0.0
     current_velocity = 0.0
     dt = 0.001 # Needs a dt for velocity calculation
+    
+    print(f"kp: {kp}, kd: {kd}")
 
     print(f"Sending target command: {target_command}")
 
