@@ -76,7 +76,7 @@ class SimulationServer:
             dt=config.physics.dt,
             gravity=config.physics.gravity,
             render_mode="window" if config.rendering.render else "offscreen",
-            freejoint=config.physics.suspended,
+            freejoint=(not config.physics.suspended),
             start_height=config.physics.start_height,
             command_delay_min=config.randomization.command_delay_min,
             command_delay_max=config.randomization.command_delay_max,
