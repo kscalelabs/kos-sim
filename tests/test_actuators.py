@@ -1,7 +1,8 @@
 """Tests for actuator models in KOS-Sim."""
 
-import pytest
 from pathlib import Path
+
+import pytest
 
 from kos_sim.actuators import FeetechActuator
 from kos_sim.types import ActuatorCommand
@@ -26,24 +27,24 @@ for params_path in ACTUATOR_PARAMS_FILES:
     if not params_path.is_file():
         raise FileNotFoundError(f"Required actuator params file not found during test setup: {params_path}")
 
+
 @pytest.mark.parametrize("actuator_type", ACTUATOR_TYPES)
-def test_feetech_actuator_basic(actuator_type): # Removed check_asset_files dependency
+def test_feetech_actuator_basic(actuator_type):  # Removed check_asset_files dependency
     """Tests basic initialization and get_ctrl call for FeetechActuator using real params."""
-    
     print(f"\n--- Testing actuator type: {actuator_type} ---")
-    model_dir = MODEL_DIR 
+    model_dir = MODEL_DIR
     feetech_actuator = FeetechActuator(actuator_type, model_dir)
 
-    assert hasattr(feetech_actuator, 'max_torque')
+    assert hasattr(feetech_actuator, "max_torque")
     assert isinstance(feetech_actuator.max_torque, float)
-    
+
     kp = 20.0
     kd = 5.0
-    target_command: ActuatorCommand = {"position": 1.0} # Target position 1.0 rad
+    target_command: ActuatorCommand = {"position": 1.0}  # Target position 1.0 rad
     current_position = 0.0
     current_velocity = 0.0
-    dt = 0.001 # Needs a dt for velocity calculation
-    
+    dt = 0.001  # Needs a dt for velocity calculation
+
     print(f"kp: {kp}, kd: {kd}")
 
     print(f"Sending target command: {target_command}")
@@ -54,7 +55,7 @@ def test_feetech_actuator_basic(actuator_type): # Removed check_asset_files depe
         target_command=target_command,
         current_position=current_position,
         current_velocity=current_velocity,
-        dt=dt
+        dt=dt,
     )
 
     print(f"Generated torque: {torque}")

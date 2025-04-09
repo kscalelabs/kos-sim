@@ -37,6 +37,8 @@ class FeetechParams(TypedDict):
 
 
 _feetech_config_cache: Dict[str, FeetechParams] = {}
+
+
 def load_feetech_config_from_catalog(actuator_type: str, base_path: Path) -> FeetechParams:
     catalog_path = base_path / "catalog.json"
     with open(catalog_path, "r") as f:
@@ -79,7 +81,6 @@ class FeetechActuator(BaseActuator):
             f"R={self.R}, "
             f"error_gain={self.error_gain}"
         )
-  
 
     def _validate_params(self):
         """Validate all required parameters are present with valid values."""
@@ -90,9 +91,9 @@ class FeetechActuator(BaseActuator):
             "max_pwm": (float, 1.0, "Maximum duty cycle"),
             "vin": (float, 12.0, "Input voltage in V"),
             "kt": (float, 0.18, "Torque constant in N⋅m/A"),
-            "R": (float, 1.0, "Motor resistance in Ω")
+            "R": (float, 1.0, "Motor resistance in Ω"),
         }
-        
+
         # Check required parameters
         for param, param_type in required_params.items():
             if param not in self.params:
@@ -101,7 +102,6 @@ class FeetechActuator(BaseActuator):
                 raise TypeError(f"Parameter {param} must be {param_type.__name__}")
             if self.params[param] <= 0:
                 raise ValueError(f"Parameter {param} must be positive")
-
 
     def get_ctrl(
         self,
