@@ -4,4 +4,4 @@ import logging
 
 logger = logging.getLogger("kos_sim")
 
-__version__ = "0.0.10"
+__version__ = "0.0.11"
