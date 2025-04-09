@@ -245,6 +245,8 @@ async def serve(
         physics=physics,
         rendering=rendering,
         randomization=randomization,
+        host=host,
+        port=port,
     )
 
     server = SimulationServer(config)
