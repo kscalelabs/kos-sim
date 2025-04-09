@@ -139,6 +139,9 @@ class MujocoSimulator:
         self._model = load_mjmodel(model_path, mujoco_scene)
 
         self._data = mujoco.MjData(self._model)
+        self._model.opt.timestep = self._dt
+        self._model.opt.integrator = get_integrator(integrator)
+        self._model.opt.solver = mujoco.mjtSolver.mjSOL_CG
 
         if not self._gravity:
             self._model.opt.gravity[2] = 0.0
