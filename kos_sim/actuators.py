@@ -5,7 +5,6 @@ from pathlib import Path
 from typing import Dict, List, TypedDict
 
 import numpy as np
-from scipy.optimize import curve_fit
 
 from kos_sim import logger
 from kos_sim.types import ActuatorCommand
@@ -38,8 +37,6 @@ class FeetechParams(TypedDict):
 
 
 _feetech_config_cache: Dict[str, FeetechParams] = {}
-
-
 def load_feetech_config_from_catalog(actuator_type: str, base_path: Path) -> FeetechParams:
     catalog_path = base_path / "catalog.json"
     with open(catalog_path, "r") as f:
@@ -62,69 +59,49 @@ def load_feetech_config_from_catalog(actuator_type: str, base_path: Path) -> Fee
 class FeetechActuator(BaseActuator):
     def __init__(self, actuator_type: str, model_dir: Path) -> None:
         self.params = load_feetech_config_from_catalog(actuator_type, model_dir)
+        self._validate_params()
+
         self.max_torque = self.params["max_torque"]
-
-        # Store additional parameters
-        self.max_velocity = self.params.get("max_velocity", 10.0)  # Default if not specified
-        self.max_pwm = self.params.get("max_pwm", 1.0)  # Default max duty cycle if not specified
-        self.vin = self.params.get("vin", 12.0)  # Default input voltage
-        self.kt = self.params.get("kt", 0.18)  # Default torque constant
-        self.R = self.params.get("R", 1.0)  # Default resistance
-
-        # For velocity smoothing
-        self.dt = None  # Default, will be overridden if set
+        self.max_velocity = self.params["max_velocity"]
+        self.max_pwm = self.params["max_pwm"]
+        self.vin = self.params["vin"]
+        self.kt = self.params["kt"]
+        self.R = self.params["R"]
+        self.error_gain = self.params["error_gain"]
         self.prev_target_position = None
-
-        # Default a/x + b parameters
-        self.a_param = 0.00005502  # Default value (STS3250)
-        self.b_param = 0.16293639  # Default value (STS3250)
-        self._pos_err_min = 0.001
-        self._pos_err_max = 0.15
-
-        # Extract error gain data and fit a/x + b curve
-        error_data = self.params["error_gain_data"]
-        if error_data and len(error_data) <= 3:
-            logger.warning(f"Not enough error gain data for {actuator_type}. Using default values.")
-        else:
-            try:
-                # Sort by position error
-                error_data_sorted = sorted(error_data, key=lambda d: d["pos_err"])
-                pos_errs = np.array([d["pos_err"] for d in error_data_sorted])
-                gains = np.array([d["error_gain"] for d in error_data_sorted])
-
-                # Store min/max position errors for clamping
-                self._pos_err_min = float(np.min(pos_errs))
-                self._pos_err_max = float(np.max(pos_errs))
-
-                def inverse_func(x: float, a: float, b: float) -> float:
-                    return a / x + b
-
-                popt, _ = curve_fit(inverse_func, pos_errs, gains)
-                self.a_param, self.b_param = popt
-                logger.info(
-                    f"Actuator {actuator_type}: Fitted parameters a={self.a_param:.6f}, b={self.b_param:.6f}, "
-                    f"error range [{self._pos_err_min:.6f}, {self._pos_err_max:.6f}]"
-                )
-            except Exception as e:
-                logger.warning(f"Error fitting curve for {actuator_type}: {e}. Using default values.")
-                # Use defaults if fitting fails
-                self._pos_err_min = 0.001
-                self._pos_err_max = 0.15
-
+        self.dt = None  # Default, will be overridden if set
         logger.debug(
             f"Initializing FeetechActuator with params: "
             f"max_torque={self.max_torque}, "
             f"max_pwm={self.params.get('max_pwm', 1.0)}, "
             f"vin={self.params.get('vin', 12.0)}, "
-            f"a={self.a_param:.6f}, b={self.b_param:.6f}"
+            f"kt={self.kt}, "
+            f"R={self.R}, "
+            f"error_gain={self.error_gain}"
         )
+  
 
-    def error_gain(self, error: float) -> float:
-        abs_error = abs(error)
-        # Clamp to the min/max range from error data (matching firmware behavior)
-        clamped_error = np.clip(abs_error, self._pos_err_min, self._pos_err_max)
-        # Use reciprocal function a/x + b
-        return self.a_param / clamped_error + self.b_param
+    def _validate_params(self):
+        """Validate all required parameters are present with valid values."""
+        required_params = {
+            "max_torque": (float, "Maximum torque in N⋅m"),
+            "error_gain": (float, "Error gain scaling factor"),
+            "max_velocity": (float, 10.0, "Maximum velocity in rad/s"),
+            "max_pwm": (float, 1.0, "Maximum duty cycle"),
+            "vin": (float, 12.0, "Input voltage in V"),
+            "kt": (float, 0.18, "Torque constant in N⋅m/A"),
+            "R": (float, 1.0, "Motor resistance in Ω")
+        }
+        
+        # Check required parameters
+        for param, param_type in required_params.items():
+            if param not in self.params:
+                raise ValueError(f"Missing required parameter: {param}")
+            if not isinstance(self.params[param], param_type):
+                raise TypeError(f"Parameter {param} must be {param_type.__name__}")
+            if self.params[param] <= 0:
+                raise ValueError(f"Parameter {param} must be positive")
+
 
     def get_ctrl(
         self,
@@ -154,9 +131,8 @@ class FeetechActuator(BaseActuator):
         pos_error = target_position - current_position
         vel_error = expected_velocity - current_velocity
 
-        # Calculate duty cycle with error gain scaling
-        error_gain = self.error_gain(pos_error)
-        raw_duty = kp * error_gain * pos_error + kd * vel_error
+        # Calculate duty cycle
+        raw_duty = kp * self.error_gain * pos_error + kd * vel_error
 
         # Clip duty cycle based on max_pwm
         duty = np.clip(raw_duty, -self.max_pwm, self.max_pwm)
