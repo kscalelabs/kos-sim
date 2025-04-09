@@ -45,6 +45,43 @@ def load_feetech_params(actuator_type: str, params_path: Path) -> FeetechParams:
     with open(config_path, "r") as f:
         return json.load(f)
 
+class TrapezoidalPlanner:
+    def __init__(self, v_max: float, a_max: float):
+        self.v_max = v_max  # maximum velocity
+        self.a_max = a_max  # maximum acceleration
+
+        self.current_position = 0.0
+        self.current_velocity = 0.0
+        self.target_position = 0.0
+
+    def set_target(self, target_position: float):
+        self.target_position = target_position
+
+    def update(self, dt: float):
+        position_error = self.target_position - self.current_position
+        direction = np.sign(position_error)
+
+        # Distance needed to stop
+        stopping_distance = (self.current_velocity ** 2) / (2 * self.a_max)
+
+        # Decision: Accelerate, cruise, or decelerate
+        if abs(position_error) > stopping_distance:
+            # Accelerate towards target
+            self.current_velocity += direction * self.a_max * dt
+            # Limit to max velocity
+            self.current_velocity = np.clip(self.current_velocity, -self.v_max, self.v_max)
+        else:
+            # Decelerate to stop at target
+            self.current_velocity -= direction * self.a_max * dt
+            # Clamp velocity to avoid overshoot
+            if direction * self.current_velocity < 0:
+                self.current_velocity = 0.0
+
+        # Update position
+        self.current_position += self.current_velocity * dt
+
+        return self.current_position, self.current_velocity
+
 
 class FeetechActuator(BaseActuator):
     def __init__(self, actuator_type: str, params_path: Path) -> None:
@@ -58,8 +95,8 @@ class FeetechActuator(BaseActuator):
         self.kt = self.params["kt"]
         self.R = self.params["R"]
         self.error_gain = self.params["error_gain"]
-        self.prev_target_position = None
         self.dt = None  # Default, will be overridden if set
+
         logger.debug(
             f"Initializing FeetechActuator with params: "
             f"max_torque={self.max_torque}, "
@@ -107,17 +144,13 @@ class FeetechActuator(BaseActuator):
 
         # Get target position from command
         target_position = target_command.get("position", current_position)
+        self.motion_planner.set_target(target_position)
 
-        if self.prev_target_position is None:
-            self.prev_target_position = current_position
-
-        # Differentiate target position to get velocity
-        expected_velocity = (target_position - self.prev_target_position) / dt
-        self.prev_target_position = target_position
-
+        desired_position, desired_velocity = self.motion_planner.update(dt)
+        
         # Calculate errors
-        pos_error = target_position - current_position
-        vel_error = expected_velocity - current_velocity
+        pos_error = desired_position - current_position
+        vel_error = desired_velocity - current_velocity
 
         # Calculate duty cycle
         raw_duty = kp * self.error_gain * pos_error + kd * vel_error
@@ -131,6 +164,7 @@ class FeetechActuator(BaseActuator):
 
         # Clip to max torque
         torque = np.clip(torque, -max_torque, max_torque)
+        #print(f"torque: {torque}, max_torque: {max_torque}, duty: {duty}, voltage: {voltage}, torque: {torque}")
 
         return torque
 
