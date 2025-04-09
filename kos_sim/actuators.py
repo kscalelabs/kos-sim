@@ -183,11 +183,15 @@ class RobstrideActuator(BaseActuator):
         dt: float | None = None,
     ) -> float:
         # Implement Robstride-specific control logic (PD control for now)
-        target_torque = (
-            kp * (target_command.get("position", 0.0) - current_position)
-            + kd * (target_command.get("velocity", 0.0) - current_velocity)
-            + target_command.get("torque", 0.0)
-        )
+        
+        target_position = target_command.get("position", 0.0)
+        target_velocity = target_command.get("velocity", 0.0)
+        target_torque = target_command.get("torque", 0.0)
+        
+        position_error = target_position - current_position
+        velocity_error = target_velocity - current_velocity
+        
+        target_torque = kp * position_error + kd * velocity_error + target_torque
 
         if max_torque is not None:
             target_torque = np.clip(target_torque, -max_torque, max_torque)
@@ -201,5 +205,7 @@ def create_actuator(actuator_type: str, model_dir: Path) -> BaseActuator:
         return RobstrideActuator()
     elif actuator_type.startswith("feetech"):
         return FeetechActuator(actuator_type, model_dir)
+    elif actuator_type.startswith("mit"):
+        return RobstrideActuator()
     else:
         raise ValueError(f"Unsupported actuator type: {actuator_type}")
