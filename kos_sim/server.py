@@ -213,10 +213,11 @@ async def serve(
     physics: PhysicsConfig = PhysicsConfig(),
     randomization: SimulationRandomizationConfig = SimulationRandomizationConfig(),
     mujoco_scene: str = "smooth",
+    no_cache: bool = False,
 ) -> None:
     async with K() as api:
         model_dir, model_metadata = await asyncio.gather(
-            api.download_and_extract_urdf(model_name),
+            api.download_and_extract_urdf(model_name, cache=(not no_cache)),
             get_model_metadata(api, model_name),
         )
 
@@ -275,6 +276,7 @@ async def run_server() -> None:
     parser.add_argument("--video-output-dir", type=str, default="videos", help="Directory to save videos")
     parser.add_argument("--frame-width", type=int, default=640, help="Frame width")
     parser.add_argument("--frame-height", type=int, default=480, help="Frame height")
+    parser.add_argument("--no-cache", action="store_true", help="Don't use cached metadata")
 
     args = parser.parse_args()
 
@@ -298,6 +300,7 @@ async def run_server() -> None:
     camera = args.camera
     frame_width = args.frame_width
     frame_height = args.frame_height
+    no_cache = args.no_cache
 
     video_output_dir = args.video_output_dir if not render else None
 
@@ -319,6 +322,12 @@ async def run_server() -> None:
     logger.info("Video output dir: %s", video_output_dir)
     logger.info("Frame width: %d", frame_width)
     logger.info("Frame height: %d", frame_height)
+    logger.info("No cache: %s", no_cache)
+
+    if no_cache:
+        metadata_path = get_sim_artifacts_path() / model_name / "metadata.json"
+        if metadata_path.exists():
+            metadata_path.unlink()
 
     if video_output_dir is not None:
         os.makedirs(video_output_dir, exist_ok=True)
@@ -355,6 +364,7 @@ async def run_server() -> None:
         physics=physics,
         randomization=randomization,
         mujoco_scene=mujoco_scene,
+        no_cache=no_cache,
     )
 
 
