@@ -68,30 +68,6 @@ class SimulationServerConfig:
     sleep_time: float = 1e-6
 
 
-T = TypeVar("T")
-
-
-## Hack Helper Function to skip Metadata Kscale API during development
-class AttrDict(dict):
-    def __getattr__(self, key: str) -> T:
-        try:
-            return self[key]
-        except KeyError:
-            raise AttributeError(f"'AttrDict' object has no attribute {key}")
-
-    def __setattr__(self, key: str, value: T) -> None:
-        self[key] = value
-
-
-def recursive_attrdict(obj: dict | list | T) -> T:
-    if isinstance(obj, dict):
-        return AttrDict({k: recursive_attrdict(v) for k, v in obj.items()})
-    elif isinstance(obj, list):
-        return [recursive_attrdict(i) for i in obj]
-    else:
-        return obj
-
-
 class SimulationServer:
     def __init__(
         self,
@@ -241,25 +217,31 @@ async def serve(
     physics: PhysicsConfig = PhysicsConfig(),
     randomization: SimulationRandomizationConfig = SimulationRandomizationConfig(),
     mujoco_scene: str = "smooth",
+    local_assets: bool = False,
 ) -> None:
-    kscale_assets_path = os.getenv("KSCALE_ASSETS_PATH", str(Path(__file__).parent.parent / "kscale-assets"))
-
-    actuator_params_path = Path(kscale_assets_path) / "actuators"
-    local_model_dir = Path(kscale_assets_path) / model_name
-
-    logger.info(f"Using kscale assets path: {kscale_assets_path}")
-    logger.info(f"Local model directory: {local_model_dir}")
-
-    # Check if local URDF exists
-    urdf_files = list(local_model_dir.glob("*.mjcf")) or list(local_model_dir.glob("*.xml"))
-    if urdf_files and (local_model_dir / "metadata.json").exists():
+    if local_assets:
+        kscale_assets_path = os.getenv("KSCALE_ASSETS_PATH")
+        if not kscale_assets_path:
+            logger.error("KSCALE_ASSETS_PATH environment variable must be set when using --load-assets")
+            raise SystemExit(1)
+        
+        local_model_dir = Path(kscale_assets_path) / model_name
+        urdf_files = list(local_model_dir.glob("*.mjcf")) or list(local_model_dir.glob("*.xml"))
+        metadata_file = local_model_dir / "metadata.json"
+        actuator_params_path = Path(kscale_assets_path) / "actuators"
+        
+        if not (urdf_files and metadata_file.exists()):
+            logger.error(f"Required files not found in {local_model_dir}")
+            logger.error("Expected .mjcf/.xml file and metadata.json")
+            raise SystemExit(1)
+            
+        logger.info(f"Loading assets from local path: {local_model_dir}")
+        logger.info(f"Loading actuator params from: {actuator_params_path}")
+        with open(metadata_file, "r") as f:
+            model_metadata = RobotURDFMetadataOutput.model_validate_json(metadata_file.read_text())
         model_dir = local_model_dir
-        with open(local_model_dir / "metadata.json", "r") as f:
-            raw_meta = json.load(f)
-            model_metadata = recursive_attrdict(raw_meta)
     else:
-        logger.info("Local files not found, downloading from API")
-        # Fallback: download from API if local files are not present
+        logger.info("Loading assets from KScale API")
         async with K() as api:
             model_dir, model_metadata = await asyncio.gather(
                 api.download_and_extract_urdf(model_name),
@@ -308,6 +290,7 @@ async def run_server() -> None:
     parser.add_argument("--video-output-dir", type=str, default="videos", help="Directory to save videos")
     parser.add_argument("--frame-width", type=int, default=640, help="Frame width")
     parser.add_argument("--frame-height", type=int, default=480, help="Frame height")
+    parser.add_argument("--local-assets", action="store_true", help="Load assets from KSCALE_ASSETS_PATH")
 
     args = parser.parse_args()
 
@@ -388,6 +371,7 @@ async def run_server() -> None:
         physics=physics,
         randomization=randomization,
         mujoco_scene=mujoco_scene,
+        local_assets=args.local_assets,
     )
 
 
