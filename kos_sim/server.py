@@ -273,7 +273,7 @@ async def run_server() -> None:
     parser.add_argument("model_name", type=str, help="Name of the model to simulate")
     parser.add_argument("--host", type=str, default="localhost", help="Host to listen on")
     parser.add_argument("--port", type=int, default=50051, help="Port to listen on")
-    parser.add_argument("--dt", type=float, default=0.002, help="Simulation timestep")
+    parser.add_argument("--dt", type=float, default=0.001, help="Simulation timestep")
     parser.add_argument("--no-gravity", action="store_true", help="Disable gravity")
     parser.add_argument("--no-render", action="store_true", help="Disable rendering")
     parser.add_argument("--render-frequency", type=float, default=1, help="Render frequency (Hz)")
