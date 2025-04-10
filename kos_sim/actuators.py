@@ -36,31 +36,19 @@ class FeetechParams(TypedDict):
     error_gain_data: List[Dict[str, float]]
 
 
-_feetech_config_cache: Dict[str, FeetechParams] = {}
-
-
-def load_feetech_config_from_catalog(actuator_type: str, base_path: Path) -> FeetechParams:
-    catalog_path = base_path / "catalog.json"
-    with open(catalog_path, "r") as f:
-        catalog = json.load(f)
-
-    actuator_config_relpath = catalog["actuators"].get(actuator_type)
-    if actuator_config_relpath is None:
-        raise ValueError(f"No config path found for actuator type '{actuator_type}' in catalog.json")
-
-    if actuator_type in _feetech_config_cache:
-        return _feetech_config_cache[actuator_type]
-
-    config_path = base_path / actuator_config_relpath
+def load_feetech_params(actuator_type: str, params_path: Path) -> FeetechParams:
+    """Load actuator parameters directly from a JSON file."""
+    config_path = params_path / f"{actuator_type}.json"
+    if not config_path.exists():
+        raise ValueError(f"Actuator parameters file '{config_path}' not found")
+    
     with open(config_path, "r") as f:
-        data = json.load(f)
-    _feetech_config_cache[actuator_type] = data
-    return data
+        return json.load(f)
 
 
 class FeetechActuator(BaseActuator):
-    def __init__(self, actuator_type: str, model_dir: Path) -> None:
-        self.params = load_feetech_config_from_catalog(actuator_type, model_dir)
+    def __init__(self, actuator_type: str, params_path: Path) -> None:
+        self.params = load_feetech_params(actuator_type, params_path)
         self._validate_params()
 
         self.max_torque = self.params["max_torque"]
@@ -170,12 +158,12 @@ class RobstrideActuator(BaseActuator):
         return target_torque
 
 
-def create_actuator(actuator_type: str, model_dir: Path) -> BaseActuator:
+def create_actuator(actuator_type: str, params_path: Path) -> BaseActuator:
     actuator_type = actuator_type.lower()
 
     if actuator_type.startswith("robstride"):
         return RobstrideActuator()
     elif actuator_type.startswith("feetech"):
-        return FeetechActuator(actuator_type, model_dir)
+        return FeetechActuator(actuator_type, params_path)
     else:
         raise ValueError(f"Unsupported actuator type: {actuator_type}")

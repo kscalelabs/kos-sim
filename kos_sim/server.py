@@ -61,7 +61,7 @@ class SimulationServerConfig:
     physics: PhysicsConfig
     model_path: str | Path
     model_metadata: RobotURDFMetadataOutput
-    actuator_catalog_path: str | Path
+    actuator_params_path: str | Path
     mujoco_scene: str = "smooth"
     host: str = "localhost"
     port: int = 50051
@@ -100,7 +100,7 @@ class SimulationServer:
         self.simulator = MujocoSimulator(
             model_path=config.model_path,
             model_metadata=config.model_metadata,
-            actuator_catalog_path=config.actuator_catalog_path,
+            actuator_params_path=config.actuator_params_path,
             dt=config.physics.dt,
             gravity=config.physics.gravity,
             render_mode="window" if config.rendering.render else "offscreen",
@@ -244,7 +244,7 @@ async def serve(
 ) -> None:
     kscale_assets_path = os.getenv("KSCALE_ASSETS_PATH", str(Path(__file__).parent.parent / "kscale-assets"))
 
-    actuator_catalog_path = Path(kscale_assets_path) / "actuators"
+    actuator_params_path = Path(kscale_assets_path) / "actuators"
     local_model_dir = Path(kscale_assets_path) / model_name
 
     logger.info(f"Using kscale assets path: {kscale_assets_path}")
@@ -276,7 +276,7 @@ async def serve(
     config = SimulationServerConfig(
         model_path=model_path,
         model_metadata=model_metadata,
-        actuator_catalog_path=actuator_catalog_path,
+        actuator_params_path=actuator_params_path,
         physics=physics,
         rendering=rendering,
         randomization=randomization,

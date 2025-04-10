@@ -51,7 +51,7 @@ class MujocoSimulator:
         self,
         model_path: str | Path,
         model_metadata: RobotURDFMetadataOutput,
-        actuator_catalog_path: str | Path,
+        actuator_params_path: str | Path,
         dt: float = 0.001,
         gravity: bool = True,
         render_mode: Literal["window", "offscreen"] = "window",
@@ -72,7 +72,7 @@ class MujocoSimulator:
         # Stores parameters.
         self._model_path = model_path
         self._metadata = model_metadata
-        self._actuator_catalog_path = actuator_catalog_path
+        self._actuator_params_path = actuator_params_path
         self._dt = dt
         self._gravity = gravity
         self._render_mode = render_mode
@@ -120,7 +120,7 @@ class MujocoSimulator:
             joint_id = _nn(joint_metadata.id)
 
             # Create a unique actuator instance for this joint
-            self._actuator_instances[joint_id] = create_actuator(actuator_type, self._actuator_catalog_path)
+            self._actuator_instances[joint_id] = create_actuator(actuator_type, self._actuator_params_path)
             # logger.info(f"Created actuator instance for joint '{joint_name}' (ID: {joint_id}, Type: {actuator_type})")
 
         # Gets the inverse mapping.
