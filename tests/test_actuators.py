@@ -63,21 +63,3 @@ def test_feetech_actuator_basic(actuator_type):  # Removed check_asset_files dep
     assert isinstance(torque, float)
     assert torque >= 0
     assert abs(torque) <= feetech_actuator.max_torque
-
-    # # Optional: Test with max_torque override
-    # override_max_torque = 2.0
-    # # Ensure the override is less than the actuator's natural max_torque for a meaningful test
-    # if override_max_torque < feetech_actuator.max_torque:
-    #     torque_limited = feetech_actuator.get_ctrl(
-    #         kp=kp,
-    #         kd=kd,
-    #         target_command=target_command,
-    #         current_position=current_position,
-    #         current_velocity=current_velocity,
-    #         max_torque=override_max_torque, # Override max_torque
-    #         dt=dt
-    #     )
-    #     print(f"Generated torque (limited to {override_max_torque}): {torque_limited}")
-    #     assert abs(torque_limited) <= override_max_torque
-    # else:
-    #     print(f"Skipping max_torque override test as override ({override_max_torque}) >= actuator max ({feetech_actuator.max_torque})")
