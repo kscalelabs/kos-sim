@@ -9,31 +9,23 @@ from kos_sim.types import ActuatorCommand
 
 TEST_ASSETS_DIR = Path(__file__).parent / "assets"
 MODEL_DIR = TEST_ASSETS_DIR / "actuators"
-CATALOG_PATH = MODEL_DIR / "catalog.json"
 
-import json
+# List of actuator types to test
+ACTUATOR_TYPES = ["feetech_sts3250", "feetech_sts3215_12v"]
 
-# Load the catalog to determine which parameter files and actuator types to test
-with open(CATALOG_PATH, "r") as catalog_file:
-    catalog = json.load(catalog_file)
-
-ACTUATOR_PARAMS_FILES = [MODEL_DIR / rel_path for rel_path in catalog["actuators"].values()]
-ACTUATOR_TYPES = list(catalog["actuators"].keys())
-
-assert len(ACTUATOR_PARAMS_FILES) == len(ACTUATOR_TYPES)
-
-# Fail early if any parameter file listed in the catalog is missing
-for params_path in ACTUATOR_PARAMS_FILES:
+# Fail early if any parameter file is missing
+for actuator_type in ACTUATOR_TYPES:
+    params_path = MODEL_DIR / f"{actuator_type}.json"
     if not params_path.is_file():
         raise FileNotFoundError(f"Required actuator params file not found during test setup: {params_path}")
 
 
 @pytest.mark.parametrize("actuator_type", ACTUATOR_TYPES)
-def test_feetech_actuator_basic(actuator_type):  # Removed check_asset_files dependency
+def test_feetech_actuator_basic(actuator_type):
     """Tests basic initialization and get_ctrl call for FeetechActuator using real params."""
     print(f"\n--- Testing actuator type: {actuator_type} ---")
-    model_dir = MODEL_DIR
-    feetech_actuator = FeetechActuator(actuator_type, model_dir)
+    params_path = MODEL_DIR
+    feetech_actuator = FeetechActuator(actuator_type, params_path)
 
     assert hasattr(feetech_actuator, "max_torque")
     assert isinstance(feetech_actuator.max_torque, float)
