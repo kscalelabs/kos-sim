@@ -245,6 +245,7 @@ async def serve(
         model_dir = local_model_dir
     else:
         logger.info("Loading assets from KScale API")
+        actuator_params_path = ""
         async with K() as api:
             model_dir, model_metadata = await asyncio.gather(
                 api.download_and_extract_urdf(model_name),
