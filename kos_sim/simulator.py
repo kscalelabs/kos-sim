@@ -7,8 +7,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal, TypeVar
 
+import kmv.utils.markers
+import kmv.viewer
 import mujoco
-import mujoco_viewer
 import numpy as np
 from kscale.web.gen.api import RobotURDFMetadataOutput
 from mujoco_scenes.mjcf import load_mjmodel
@@ -18,6 +19,16 @@ from kos_sim.actuators import BaseActuator, create_actuator
 from kos_sim.types import ActuatorCommand, ConfigureActuatorRequest
 
 T = TypeVar("T")
+
+GEOM_TO_MARKER_MAPPING: dict[int, str] = {
+    mujoco.mjtGeom.mjGEOM_SPHERE: "SPHERE",
+    mujoco.mjtGeom.mjGEOM_BOX: "BOX",
+    mujoco.mjtGeom.mjGEOM_CAPSULE: "CAPSULE",
+    mujoco.mjtGeom.mjGEOM_CYLINDER: "CYLINDER",
+    mujoco.mjtGeom.mjGEOM_ARROW: "ARROW",
+}
+
+MARKER_TO_GEOM_MAPPING: dict[str, int] = {v: k for k, v in GEOM_TO_MARKER_MAPPING.items()}
 
 
 def _nn(value: T | None) -> T:
@@ -55,7 +66,7 @@ class MujocoSimulator:
         dt: float = 0.001,
         gravity: bool = True,
         render_mode: Literal["window", "offscreen"] = "window",
-        suspended: bool = False,
+        freejoint: bool = False,
         start_height: float = 1.5,
         command_delay_min: float = 0.0,
         command_delay_max: float = 0.0,
@@ -77,7 +88,7 @@ class MujocoSimulator:
         self._dt = dt
         self._gravity = gravity
         self._render_mode = render_mode
-        self._suspended = suspended
+        self._freejoint = freejoint
         self._start_height = start_height
         self._command_delay_min = command_delay_min
         self._command_delay_max = command_delay_max
@@ -86,7 +97,7 @@ class MujocoSimulator:
         self._joint_vel_noise = math.radians(joint_vel_noise)
         self._update_pd_delta = 1.0 / pd_update_frequency
         self._camera = camera
-        self._fixed_base = fixed_base
+        self._markers: dict[str, kmv.utils.markers.TrackingMarker] = {}
 
         # Gets the sim decimation.
         if (control_frequency := self._metadata.control_frequency) is None:
@@ -148,31 +159,25 @@ class MujocoSimulator:
 
         # Load MuJoCo model and initialize data
         logger.info("Loading model from %s", model_path)
-        if not self._fixed_base:
-            self._model = load_mjmodel(model_path, mujoco_scene)
-        else:
-            self._model = mujoco.MjModel.from_xml_path(str(model_path))
-        #self._model = load_mjmodel(model_path, mujoco_scene)
 
-        self._data = mujoco.MjData(self._model)
+        self._model = load_mjmodel(model_path, mujoco_scene)
+
         self._model.opt.timestep = self._dt
         self._model.opt.integrator = get_integrator(integrator)
         self._model.opt.solver = mujoco.mjtSolver.mjSOL_CG
+        
+        self._data = mujoco.MjData(self._model)
 
         if not self._gravity:
             self._model.opt.gravity[2] = 0.0
 
-        # Initialize state vectors based on joint configuration
-        if not self._fixed_base:
+        # Initialize velocities and accelerations to zero
+        if self._freejoint:
             self._data.qpos[:3] = np.array([0.0, 0.0, self._start_height])
             self._data.qpos[3:7] = np.array([0.0, 0.0, 0.0, 1.0])
             self._data.qpos[7:] = np.zeros_like(self._data.qpos[7:])
         else:
             self._data.qpos[:] = np.zeros_like(self._data.qpos)
-        #self._data.qpos[:3] = np.array([0.0, 0.0, self._start_height])
-        #self._data.qpos[3:7] = np.array([0.0, 0.0, 0.0, 1.0])
-        #self._data.qpos[7:] = np.zeros_like(self._data.qpos[7:])
-
         self._data.qvel = np.zeros_like(self._data.qvel)
         self._data.qacc = np.zeros_like(self._data.qacc)
 
@@ -187,18 +192,25 @@ class MujocoSimulator:
 
         # Setup viewer after initial step
         self._render_enabled = self._render_mode == "window"
-        self._viewer = mujoco_viewer.MujocoViewer(
-            self._model,
-            self._data,
-            mode=self._render_mode,
-            width=frame_width,
-            height=frame_height,
-        )
 
-        if self._camera is not None:
+        self._viewer = None
+
+        if self._render_enabled:
+            self._viewer = kmv.viewer.MujocoViewerHandler(
+                handle=kmv.viewer.launch_passive(
+                    self._model,
+                    self._data,
+                    render_width=frame_width,
+                    render_height=frame_height,
+                    ctrl_dt=self._dt,
+                )
+            )
+
+        if self._camera is not None and self._viewer is not None:
             camera_obj = self._model.camera(self._camera)
-            self._viewer.cam.type = mujoco.mjtCamera.mjCAMERA_TRACKING
-            self._viewer.cam.trackbodyid = camera_obj.id
+            self._viewer.setup_camera(
+                render_track_body_id=camera_obj.id,
+            )
 
         # Cache lookups after initialization
         self._sensor_name_to_id = {self._model.sensor(i).name: i for i in range(self._model.nsensor)}
@@ -269,20 +281,17 @@ class MujocoSimulator:
         # It possibly computes some values that are needed for the step.
         mujoco.mj_forward(self._model, self._data)
         mujoco.mj_step(self._model, self._data)
-        if self._suspended:
-            # Find the root joint (floating_base)
-            for i in range(self._model.njnt):
-                if self._model.jnt_type[i] == mujoco.mjtJoint.mjJNT_FREE:
-                    self._data.qpos[i : i + 7] = [0.0, 0.0, self._start_height, 0.0, 0.0, 0.0, 1.0]
-                    self._data.qvel[i : i + 6] = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
-                    break
 
         return self._data
 
     async def render(self) -> None:
         """Render the simulation asynchronously."""
         if self._render_enabled:
-            self._viewer.render()
+            assert self._viewer is not None
+            for marker in self._markers.values():
+                self._viewer._markers.append(marker)
+
+            self._viewer.update_and_sync()
 
     async def capture_frame(self, camid: int = -1, depth: bool = False) -> tuple[np.ndarray, np.ndarray | None]:
         """Capture a frame from the simulation using read_pixels.
@@ -294,22 +303,26 @@ class MujocoSimulator:
         Returns:
             RGB image array (and optionally depth array) if depth=True
         """
-        if self._render_mode != "offscreen" and self._render_enabled:
-            logger.warning("Capturing frames is more efficient in offscreen mode")
+        # TODO: Use native mujoco renderder for offline and shiiiiiiiiit
+        return np.zeros((480, 640, 3), dtype=np.uint8), None
+        # if self._render_mode != "offscreen" and self._render_enabled:
+        #     logger.warning("Capturing frames is more efficient in offscreen mode")
 
-        if camid is not None:
-            if camid == -1:
-                self._viewer.cam.type = mujoco.mjtCamera.mjCAMERA_FREE
-            else:
-                self._viewer.cam.type = mujoco.mjtCamera.mjCAMERA_FIXED
-                self._viewer.cam.fixedcamid = camid
+        # if depth:
+        #     logger.warning("Depth is not currently supported")
 
-        if depth:
-            rgb, depth_img = self._viewer.read_pixels(depth=True)
-            return rgb, depth_img
-        else:
-            rgb = self._viewer.read_pixels()
-            return rgb, None
+        # for marker in self._markers.values():
+        #     self._viewer.add_marker(**marker)
+
+        # if camid is not None:
+        #     if camid == -1:
+        #         self._viewer.handle.cam.type = mujoco.mjtCamera.mjCAMERA_FREE
+        #     else:
+        #         self._viewer.handle.cam.type = mujoco.mjtCamera.mjCAMERA_FIXED
+        #         self._viewer.handle.cam.fixedcamid = camid
+
+        # rgb = self._viewer.read_pixels()
+        # return rgb, None
 
     async def get_sensor_data(self, name: str) -> np.ndarray:
         """Get data from a named sensor."""
@@ -387,16 +400,12 @@ class MujocoSimulator:
 
         # Resets qpos.
         qpos = np.zeros_like(self._data.qpos)
-
-        if not self._fixed_base:
+        if self._freejoint:
             qpos[:3] = np.array([0.0, 0.0, self._start_height] if xyz is None else xyz)
             qpos[3:7] = np.array([0.0, 0.0, 0.0, 1.0] if quat is None else quat)
             qpos[7:] = np.zeros_like(self._data.qpos[7:])
         else:
             qpos[:] = np.zeros_like(self._data.qpos)
-        #qpos[:3] = np.array([0.0, 0.0, self._start_height] if xyz is None else xyz)
-        #qpos[3:7] = np.array([0.0, 0.0, 0.0, 1.0] if quat is None else quat)
-       # qpos[7:] = np.zeros_like(self._data.qpos[7:])
 
         if joint_pos is not None:
             for joint_name, position in joint_pos.items():

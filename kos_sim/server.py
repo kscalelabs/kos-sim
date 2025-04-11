@@ -81,7 +81,7 @@ class SimulationServer:
             dt=config.physics.dt,
             gravity=config.physics.gravity,
             render_mode="window" if config.rendering.render else "offscreen",
-            suspended=config.physics.suspended,
+            freejoint=(not config.physics.suspended),
             start_height=config.physics.start_height,
             command_delay_min=config.randomization.command_delay_min,
             command_delay_max=config.randomization.command_delay_max,
@@ -221,6 +221,7 @@ async def serve(
     mujoco_scene: str = "smooth",
     local_assets: bool = False,
     fixed_base: bool = False,
+    no_cache: bool = False,
 ) -> None:
     if local_assets:
         kscale_assets_path = os.getenv("KSCALE_ASSETS_PATH")
@@ -248,16 +249,28 @@ async def serve(
         actuator_params_path = ""
         async with K() as api:
             model_dir, model_metadata = await asyncio.gather(
-                api.download_and_extract_urdf(model_name),
+                api.download_and_extract_urdf(model_name, cache=(not no_cache)),
                 get_model_metadata(api, model_name),
             )
 
-    model_path = next(
-        itertools.chain(
-            model_dir.glob("*.mjcf"),
-            model_dir.glob("*.xml"),
+    if physics.suspended:
+        model_path = next(
+            itertools.chain(
+                model_dir.glob("*.suspended.mjcf"),
+                model_dir.glob("*.suspended.xml"),
+            )
         )
-    )
+    else:
+        model_path = next(
+            (
+                path
+                for path in itertools.chain(
+                    model_dir.glob("*.mjcf"),
+                    model_dir.glob("*.xml"),
+                )
+                if "suspended" not in path.name
+            )
+        )
 
     config = SimulationServerConfig(
         model_path=model_path,
@@ -266,7 +279,8 @@ async def serve(
         physics=physics,
         rendering=rendering,
         randomization=randomization,
-        fixed_base=fixed_base,
+        host=host,
+        port=port,
     )
 
     server = SimulationServer(config)
@@ -296,7 +310,7 @@ async def run_server() -> None:
     parser.add_argument("--frame-width", type=int, default=640, help="Frame width")
     parser.add_argument("--frame-height", type=int, default=480, help="Frame height")
     parser.add_argument("--local-assets", action="store_true", help="Load assets from KSCALE_ASSETS_PATH")
-    parser.add_argument("--fixed-base", action="store_true", help="Use fixed base")
+    parser.add_argument("--no-cache", action="store_true", help="Don't use cached metadata")
 
     args = parser.parse_args()
 
@@ -320,6 +334,7 @@ async def run_server() -> None:
     camera = args.camera
     frame_width = args.frame_width
     frame_height = args.frame_height
+    no_cache = args.no_cache
 
     video_output_dir = args.video_output_dir if not render else None
 
@@ -341,6 +356,12 @@ async def run_server() -> None:
     logger.info("Video output dir: %s", video_output_dir)
     logger.info("Frame width: %d", frame_width)
     logger.info("Frame height: %d", frame_height)
+    logger.info("No cache: %s", no_cache)
+
+    if no_cache:
+        metadata_path = get_sim_artifacts_path() / model_name / "metadata.json"
+        if metadata_path.exists():
+            metadata_path.unlink()
 
     if video_output_dir is not None:
         os.makedirs(video_output_dir, exist_ok=True)
@@ -378,7 +399,7 @@ async def run_server() -> None:
         randomization=randomization,
         mujoco_scene=mujoco_scene,
         local_assets=args.local_assets,
-        fixed_base=args.fixed_base,
+        no_cache=no_cache,
     )
 
 

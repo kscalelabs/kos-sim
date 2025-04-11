@@ -1,0 +1,7 @@
+#!/bin/bash
+
+if [[ "$OSTYPE" == "darwin"* ]]; then
+    mjpython -m kos_sim.server "$@"
+else
+    python -m kos_sim.server "$@"
+fi 

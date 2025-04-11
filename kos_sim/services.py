@@ -4,7 +4,9 @@ import asyncio
 import math
 
 import grpc
+import numpy as np
 from google.protobuf import empty_pb2
+from kmv.viewer import MujocoViewerHandler
 from kos_protos import (
     actuator_pb2,
     actuator_pb2_grpc,
@@ -18,7 +20,13 @@ from kos_protos import (
 )
 
 from kos_sim import logger
-from kos_sim.simulator import ActuatorCommand, ConfigureActuatorRequest, MujocoSimulator
+from kos_sim.simulator import (
+    GEOM_TO_MARKER_MAPPING,
+    MARKER_TO_GEOM_MAPPING,
+    ActuatorCommand,
+    ConfigureActuatorRequest,
+    MujocoSimulator,
+)
 from kos_sim.video_recorder import VideoRecorder
 
 
@@ -121,6 +129,109 @@ class SimService(sim_pb2_grpc.SimulationServiceServicer):
             context.set_code(grpc.StatusCode.INTERNAL)
             context.set_details(str(e))
             return sim_pb2.GetParametersResponse(error=common_pb2.Error(message=str(e)))
+
+    async def GetMarkers(  # noqa: N802
+        self, request: empty_pb2.Empty, context: grpc.ServicerContext
+    ) -> sim_pb2.GetMarkersResponse:
+        """Get all markers in the simulation."""
+        markers = []
+        for marker in self.simulator._markers.values():
+            assert marker.geom is not None
+            assert marker.tracking_cfg is not None
+
+            geom_name = GEOM_TO_MARKER_MAPPING[marker.geom]
+
+            markers.append(
+                sim_pb2.Marker(
+                    name=marker.name,
+                    marker_type=getattr(sim_pb2.Marker.MarkerType, geom_name),
+                    target_name=marker.tracking_cfg.target_name,
+                    target_type=getattr(sim_pb2.Marker.TargetType, str.upper(marker.tracking_cfg.target_type)),
+                    scale=sim_pb2.Marker.Scale(scale=marker.scale),
+                    color=sim_pb2.Marker.RGBA(
+                        r=marker.color[0], g=marker.color[1], b=marker.color[2], a=marker.color[3]
+                    ),
+                    label=(marker.label is not None),
+                    track_rotation=marker.tracking_cfg.track_rotation,
+                    offset=sim_pb2.Marker.Offset(
+                        x=marker.tracking_cfg.offset[0],
+                        y=marker.tracking_cfg.offset[1],
+                        z=marker.tracking_cfg.offset[2],
+                    ),
+                )
+            )
+        return sim_pb2.GetMarkersResponse(markers=markers)
+
+    async def AddMarker(  # noqa: N802
+        self, marker: sim_pb2.Marker, context: grpc.ServicerContext
+    ) -> common_pb2.ActionResponse:
+        """Add a marker to the simulation."""
+        if marker.name in self.simulator._markers:
+            logger.warning("Marker %s already exists. Not adding again.", marker.name)
+            return common_pb2.ActionResponse(success=False, error="Marker already exists")
+
+        target_type = sim_pb2.Marker.TargetType.Name(marker.target_type)
+
+        marker_params = {
+            "name": marker.name,
+            "model": self.simulator._model,
+            "geom": MARKER_TO_GEOM_MAPPING[sim_pb2.Marker.MarkerType.Name(marker.marker_type)],
+            "scale": np.array(marker.scale.scale),
+            "color": np.array([marker.color.r, marker.color.g, marker.color.b, marker.color.a]),
+            "tracking_offset": np.array([marker.offset.x, marker.offset.y, marker.offset.z]),
+            "track_rotation": marker.track_rotation,
+        }
+
+        if target_type == "BODY":
+            marker_params["track_body_name"] = marker.target_name
+        elif target_type == "SITE":
+            marker_params["track_site_name"] = marker.target_name
+
+        if marker.label:
+            marker_params["label"] = marker.name
+
+        self.simulator._markers[marker.name] = MujocoViewerHandler.create_marker(**marker_params)
+        return common_pb2.ActionResponse(success=True)
+
+    async def RemoveMarker(  # noqa: N802
+        self, request: sim_pb2.RemoveMarkerRequest, context: grpc.ServicerContext
+    ) -> common_pb2.ActionResponse:
+        """Remove a marker from the simulation."""
+        if request.name not in self.simulator._markers:
+            logger.warning("Marker %s not found. Not removing.", request.name)
+            return common_pb2.ActionResponse(
+                success=False, error=common_pb2.Error(code=common_pb2.ErrorCode.NOT_FOUND, message="Marker not found")
+            )
+
+        del self.simulator._markers[request.name]
+        return common_pb2.ActionResponse(success=True)
+
+    async def UpdateMarker(  # noqa: N802
+        self, request: sim_pb2.UpdateMarkerRequest, context: grpc.ServicerContext
+    ) -> common_pb2.ActionResponse:
+        """Update a marker in the simulation."""
+        if request.name not in self.simulator._markers:
+            logger.warning("Marker %s not found. Not updating.", request.name)
+            return common_pb2.ActionResponse(
+                success=False, error=common_pb2.Error(code=common_pb2.ErrorCode.NOT_FOUND, message="Marker not found")
+            )
+
+        existing_marker = self.simulator._markers[request.name]
+
+        assert existing_marker.tracking_cfg is not None
+
+        if request.HasField("marker_type"):
+            existing_marker.geom = MARKER_TO_GEOM_MAPPING[sim_pb2.Marker.MarkerType.Name(request.marker_type)]
+        if request.HasField("offset"):
+            existing_marker.tracking_cfg.offset = np.array([request.offset.x, request.offset.y, request.offset.z])
+        if request.HasField("color"):
+            existing_marker.color = np.array([request.color.r, request.color.g, request.color.b, request.color.a])
+        if request.HasField("scale"):
+            existing_marker.scale = np.array(request.scale.scale)
+        if request.HasField("label"):
+            existing_marker.label = request.name if request.label else None
+
+        return common_pb2.ActionResponse(success=True)
 
 
 class ActuatorService(actuator_pb2_grpc.ActuatorServiceServicer):
