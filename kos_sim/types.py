@@ -15,3 +15,15 @@ class ConfigureActuatorRequest(TypedDict):
     kp: NotRequired[float]
     kd: NotRequired[float]
     max_torque: NotRequired[float]
+
+
+class FeetechParams(TypedDict):
+    sysid: str
+    max_torque: float
+    armature: float
+    frictionloss: float
+    damping: float
+    vin: float
+    kt: float
+    R: float
+    error_gain: float

@@ -68,6 +68,7 @@ class MujocoSimulator:
         camera: str | None = None,
         frame_width: int = 640,
         frame_height: int = 480,
+        fixed_base: bool = False,
     ) -> None:
         # Stores parameters.
         self._model_path = model_path
@@ -85,6 +86,7 @@ class MujocoSimulator:
         self._joint_vel_noise = math.radians(joint_vel_noise)
         self._update_pd_delta = 1.0 / pd_update_frequency
         self._camera = camera
+        self._fixed_base = fixed_base
 
         # Gets the sim decimation.
         if (control_frequency := self._metadata.control_frequency) is None:
@@ -112,16 +114,26 @@ class MujocoSimulator:
             name: _nn(joint.actuator_type) for name, joint in self._metadata.joint_name_to_metadata.items()
         }
 
-        # Create unique actuator instances keyed by actuator type.
-        self._actuator_instances: dict[int, BaseActuator] = {}  # Keyed by actuator ID
-        # Create an actuator instance for each joint
+        # Create actuator instances more efficiently
+        self._actuator_instances: dict[int, BaseActuator] = {}  # All actuators by joint ID
+        self._actuator_type_instances: dict[str, BaseActuator] = {}  # Cache for stateless actuators
+
+        # Create actuator instances
         for joint_name, joint_metadata in self._metadata.joint_name_to_metadata.items():
             actuator_type = _nn(joint_metadata.actuator_type)
             joint_id = _nn(joint_metadata.id)
 
-            # Create a unique actuator instance for this joint
-            self._actuator_instances[joint_id] = create_actuator(actuator_type, self._actuator_params_path)
-            # logger.info(f"Created actuator instance for joint '{joint_name}' (ID: {joint_id}, Type: {actuator_type})")
+            # Create new actuator instance
+            actuator = create_actuator(actuator_type, self._actuator_params_path)
+            
+            if actuator.is_stateful:
+                # Always create new instance for stateful actuators
+                self._actuator_instances[joint_id] = actuator
+            else:
+                # For stateless actuators, reuse existing instance if available
+                if actuator_type not in self._actuator_type_instances:
+                    self._actuator_type_instances[actuator_type] = actuator
+                self._actuator_instances[joint_id] = self._actuator_type_instances[actuator_type]
 
         # Gets the inverse mapping.
         self._joint_id_to_name = {v: k for k, v in self._joint_name_to_id.items()}
@@ -136,7 +148,11 @@ class MujocoSimulator:
 
         # Load MuJoCo model and initialize data
         logger.info("Loading model from %s", model_path)
-        self._model = load_mjmodel(model_path, mujoco_scene)
+        if not self._fixed_base:
+            self._model = load_mjmodel(model_path, mujoco_scene)
+        else:
+            self._model = mujoco.MjModel.from_xml_path(str(model_path))
+        #self._model = load_mjmodel(model_path, mujoco_scene)
 
         self._data = mujoco.MjData(self._model)
         self._model.opt.timestep = self._dt
@@ -147,9 +163,15 @@ class MujocoSimulator:
             self._model.opt.gravity[2] = 0.0
 
         # Initialize state vectors based on joint configuration
-        self._data.qpos[:3] = np.array([0.0, 0.0, self._start_height])
-        self._data.qpos[3:7] = np.array([0.0, 0.0, 0.0, 1.0])
-        self._data.qpos[7:] = np.zeros_like(self._data.qpos[7:])
+        if not self._fixed_base:
+            self._data.qpos[:3] = np.array([0.0, 0.0, self._start_height])
+            self._data.qpos[3:7] = np.array([0.0, 0.0, 0.0, 1.0])
+            self._data.qpos[7:] = np.zeros_like(self._data.qpos[7:])
+        else:
+            self._data.qpos[:] = np.zeros_like(self._data.qpos)
+        #self._data.qpos[:3] = np.array([0.0, 0.0, self._start_height])
+        #self._data.qpos[3:7] = np.array([0.0, 0.0, 0.0, 1.0])
+        #self._data.qpos[7:] = np.zeros_like(self._data.qpos[7:])
 
         self._data.qvel = np.zeros_like(self._data.qvel)
         self._data.qacc = np.zeros_like(self._data.qacc)
@@ -158,6 +180,8 @@ class MujocoSimulator:
         mujoco.mj_forward(self._model, self._data)
         mujoco.mj_step(self._model, self._data)
 
+
+        #TODO: Skip this under some condition.
         # Configure actuator parameters based on metadata
         self._configure_actuator_parameters()
 
@@ -364,9 +388,15 @@ class MujocoSimulator:
         # Resets qpos.
         qpos = np.zeros_like(self._data.qpos)
 
-        qpos[:3] = np.array([0.0, 0.0, self._start_height] if xyz is None else xyz)
-        qpos[3:7] = np.array([0.0, 0.0, 0.0, 1.0] if quat is None else quat)
-        qpos[7:] = np.zeros_like(self._data.qpos[7:])
+        if not self._fixed_base:
+            qpos[:3] = np.array([0.0, 0.0, self._start_height] if xyz is None else xyz)
+            qpos[3:7] = np.array([0.0, 0.0, 0.0, 1.0] if quat is None else quat)
+            qpos[7:] = np.zeros_like(self._data.qpos[7:])
+        else:
+            qpos[:] = np.zeros_like(self._data.qpos)
+        #qpos[:3] = np.array([0.0, 0.0, self._start_height] if xyz is None else xyz)
+        #qpos[3:7] = np.array([0.0, 0.0, 0.0, 1.0] if quat is None else quat)
+       # qpos[7:] = np.zeros_like(self._data.qpos[7:])
 
         if joint_pos is not None:
             for joint_name, position in joint_pos.items():

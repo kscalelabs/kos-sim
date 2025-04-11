@@ -2,88 +2,66 @@
 
 import json
 from pathlib import Path
-from typing import Dict, List, TypedDict
-
 import numpy as np
-
 from kos_sim import logger
-from kos_sim.types import ActuatorCommand
+from kos_sim.types import ActuatorCommand, FeetechParams
 
 
 class BaseActuator:
+    @property
+    def is_stateful(self) -> bool:
+        """Return whether this actuator maintains state between calls."""
+        return False
+
     def get_ctrl(
         self,
         kp: float,
         kd: float,
-        target_command: float,
+        target_command: ActuatorCommand,
         current_position: float,
         current_velocity: float,
         max_torque: float | None = None,
         dt: float | None = None,
     ) -> float:
         raise NotImplementedError("Subclasses must implement get_ctrl.")
+        
 
+class RobstrideActuator(BaseActuator):
+    # Since RobstrideActuator is stateless, we can make it a singleton
+    _instance = None
 
-class FeetechParams(TypedDict):
-    sysid: str
-    max_torque: float
-    armature: float
-    frictionloss: float
-    damping: float
-    vin: float
-    kt: float
-    R: float
-    error_gain_data: List[Dict[str, float]]
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super(RobstrideActuator, cls).__new__(cls)
+        return cls._instance
 
+    def get_ctrl(
+        self,
+        kp: float,
+        kd: float,
+        target_command: ActuatorCommand,
+        current_position: float,
+        current_velocity: float,
+        max_torque: float | None = None,
+        dt: float | None = None,
+    ) -> float:
+        # Implement Robstride-specific control logic (PD control for now)
+        target_torque = (
+            kp * (target_command.get("position", 0.0) - current_position)
+            + kd * (target_command.get("velocity", 0.0) - current_velocity)
+            + target_command.get("torque", 0.0)
+        )
 
-def load_feetech_params(actuator_type: str, params_path: Path) -> FeetechParams:
-    """Load actuator parameters directly from a JSON file."""
-    config_path = params_path / f"{actuator_type}.json"
-    if not config_path.exists():
-        raise ValueError(f"Actuator parameters file '{config_path}' not found")
-    
-    with open(config_path, "r") as f:
-        return json.load(f)
-
-class TrapezoidalPlanner:
-    def __init__(self, v_max: float, a_max: float):
-        self.v_max = v_max  # maximum velocity
-        self.a_max = a_max  # maximum acceleration
-
-        self.current_position = 0.0
-        self.current_velocity = 0.0
-        self.target_position = 0.0
-
-    def set_target(self, target_position: float):
-        self.target_position = target_position
-
-    def update(self, dt: float):
-        position_error = self.target_position - self.current_position
-        direction = np.sign(position_error)
-
-        # Distance needed to stop
-        stopping_distance = (self.current_velocity ** 2) / (2 * self.a_max)
-
-        # Decision: Accelerate, cruise, or decelerate
-        if abs(position_error) > stopping_distance:
-            # Accelerate towards target
-            self.current_velocity += direction * self.a_max * dt
-            # Limit to max velocity
-            self.current_velocity = np.clip(self.current_velocity, -self.v_max, self.v_max)
-        else:
-            # Decelerate to stop at target
-            self.current_velocity -= direction * self.a_max * dt
-            # Clamp velocity to avoid overshoot
-            if direction * self.current_velocity < 0:
-                self.current_velocity = 0.0
-
-        # Update position
-        self.current_position += self.current_velocity * dt
-
-        return self.current_position, self.current_velocity
+        if max_torque is not None:
+            target_torque = np.clip(target_torque, -max_torque, max_torque)
+        return target_torque
 
 
 class FeetechActuator(BaseActuator):
+    @property
+    def is_stateful(self) -> bool:
+        return True
+    
     def __init__(self, actuator_type: str, params_path: Path) -> None:
         self.params = load_feetech_params(actuator_type, params_path)
         self._validate_params()
@@ -96,6 +74,9 @@ class FeetechActuator(BaseActuator):
         self.R = self.params["R"]
         self.error_gain = self.params["error_gain"]
         self.dt = None  # Default, will be overridden if set
+        self.vmax = 5.0
+        self.acceleration= 39.0
+        self.motion_planner = TrapezoidalPlanner(self.vmax, self.acceleration)
 
         logger.debug(
             f"Initializing FeetechActuator with params: "
@@ -137,6 +118,7 @@ class FeetechActuator(BaseActuator):
         current_velocity: float,
         max_torque: float | None = None,
         dt: float | None = None,
+
     ) -> float:
         # Use instance max_torque if none provided
         if max_torque is None:
@@ -168,36 +150,57 @@ class FeetechActuator(BaseActuator):
 
         return torque
 
-
-class RobstrideActuator(BaseActuator):
-    def get_ctrl(
-        self,
-        kp: float,
-        kd: float,
-        target_command: ActuatorCommand,
-        current_position: float,
-        current_velocity: float,
-        max_torque: float | None = None,
-        dt: float | None = None,
-    ) -> float:
-        # Implement Robstride-specific control logic (PD control for now)
-        target_torque = (
-            kp * (target_command.get("position", 0.0) - current_position)
-            + kd * (target_command.get("velocity", 0.0) - current_velocity)
-            + target_command.get("torque", 0.0)
-        )
-
-        if max_torque is not None:
-            target_torque = np.clip(target_torque, -max_torque, max_torque)
-        return target_torque
-
-
 def create_actuator(actuator_type: str, params_path: Path) -> BaseActuator:
     actuator_type = actuator_type.lower()
 
     if actuator_type.startswith("robstride"):
-        return RobstrideActuator()
+        return RobstrideActuator()  # Singleton
     elif actuator_type.startswith("feetech"):
-        return FeetechActuator(actuator_type, params_path)
+        return FeetechActuator(actuator_type, params_path)  # Stateful
     else:
         raise ValueError(f"Unsupported actuator type: {actuator_type}")
+
+def load_feetech_params(actuator_type: str, params_path: Path) -> FeetechParams:
+    """Load actuator parameters directly from a JSON file."""
+    config_path = params_path / f"{actuator_type}.json"
+    if not config_path.exists():
+        raise ValueError(f"Actuator parameters file '{config_path}' not found")
+    
+    with open(config_path, "r") as f:
+        return json.load(f)
+
+class TrapezoidalPlanner:
+    def __init__(self, v_max: float, acceleration: float):
+        self.v_max = v_max  # maximum velocity
+        self.acceleration = acceleration  # constant acceleration
+        self.current_position = 0.0
+        self.current_velocity = 0.0
+        self.target_position = 0.0
+
+    def set_target(self, target_position: float):
+        self.target_position = target_position
+
+    def update(self, dt: float):
+        position_error = self.target_position - self.current_position
+        direction = np.sign(position_error)
+
+        # Distance needed to stop
+        stopping_distance = (self.current_velocity ** 2) / (2 * self.acceleration)
+
+        # Decision: Accelerate, cruise, or decelerate
+        if abs(position_error) > stopping_distance:
+            # Accelerate towards target
+            self.current_velocity += direction * self.acceleration * dt
+            # Limit to max velocity
+            self.current_velocity = np.clip(self.current_velocity, -self.v_max, self.v_max)
+        else:
+            # Decelerate to stop at target
+            self.current_velocity -= direction * self.acceleration * dt
+            # Clamp velocity to avoid overshoot
+            if direction * self.current_velocity < 0:
+                self.current_velocity = 0.0
+
+        # Update position
+        self.current_position += self.current_velocity * dt
+
+        return self.current_position, self.current_velocity
