@@ -66,6 +66,7 @@ class SimulationServerConfig:
     host: str = "localhost"
     port: int = 50051
     sleep_time: float = 1e-6
+    fixed_base: bool = False
 
 
 class SimulationServer:
@@ -91,6 +92,7 @@ class SimulationServer:
             camera=config.rendering.camera,
             frame_width=config.rendering.frame_width,
             frame_height=config.rendering.frame_height,
+            fixed_base=config.fixed_base,
         )
         self.host = config.host
         self.port = config.port
@@ -218,6 +220,7 @@ async def serve(
     randomization: SimulationRandomizationConfig = SimulationRandomizationConfig(),
     mujoco_scene: str = "smooth",
     local_assets: bool = False,
+    fixed_base: bool = False,
 ) -> None:
     if local_assets:
         kscale_assets_path = os.getenv("KSCALE_ASSETS_PATH")
@@ -262,6 +265,7 @@ async def serve(
         physics=physics,
         rendering=rendering,
         randomization=randomization,
+        fixed_base=fixed_base,
     )
 
     server = SimulationServer(config)
@@ -291,6 +295,7 @@ async def run_server() -> None:
     parser.add_argument("--frame-width", type=int, default=640, help="Frame width")
     parser.add_argument("--frame-height", type=int, default=480, help="Frame height")
     parser.add_argument("--local-assets", action="store_true", help="Load assets from KSCALE_ASSETS_PATH")
+    parser.add_argument("--fixed-base", action="store_true", help="Use fixed base")
 
     args = parser.parse_args()
 
@@ -372,6 +377,7 @@ async def run_server() -> None:
         randomization=randomization,
         mujoco_scene=mujoco_scene,
         local_assets=args.local_assets,
+        fixed_base=args.fixed_base,
     )
 
 
