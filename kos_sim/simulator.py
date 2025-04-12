@@ -381,6 +381,10 @@ class MujocoSimulator:
             self._joint_name_to_kd[joint_name] = configuration["kd"]
         if "max_torque" in configuration:
             self._joint_name_to_max_torque[joint_name] = configuration["max_torque"]
+        if "acceleration" in configuration:
+            self._actuator_instances[joint_id].set_motion_limits(
+                acceleration=math.radians(configuration["acceleration"])
+            )
 
     @property
     def sim_time(self) -> float:

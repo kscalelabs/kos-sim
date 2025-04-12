@@ -15,7 +15,7 @@ class ConfigureActuatorRequest(TypedDict):
     kp: NotRequired[float]
     kd: NotRequired[float]
     max_torque: NotRequired[float]
-
+    acceleration: NotRequired[float]
 
 class FeetechParams(TypedDict):
     sysid: str

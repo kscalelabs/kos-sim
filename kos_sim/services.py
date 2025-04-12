@@ -307,6 +307,8 @@ class ActuatorService(actuator_pb2_grpc.ActuatorServiceServicer):
             configuration["kd"] = request.kd
         if request.HasField("max_torque"):
             configuration["max_torque"] = request.max_torque
+        if request.HasField("acceleration"):  
+            configuration["acceleration"] = request.acceleration 
         await self.simulator.configure_actuator(request.actuator_id, configuration)
 
         return common_pb2.ActionResponse(success=True)

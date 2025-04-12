@@ -13,6 +13,19 @@ class BaseActuator:
         """Return whether this actuator maintains state between calls."""
         return False
     
+    def set_motion_limits(
+        self,
+        vmax: float | None = None,
+        acceleration: float | None = None
+    ) -> None:
+        """Set motion planning limits for the actuator.
+        
+        Args:
+            vmax: Maximum velocity (rad/s). If None, keeps current value.
+            acceleration: Maximum acceleration (rad/s²). If None, keeps current value.
+        """
+        pass  # Base implementation does nothing
+    
     def reset(self) -> None:
         """Reset any internal state."""
         pass
@@ -91,6 +104,40 @@ class FeetechActuator(BaseActuator):
             f"R={self.R}, "
             f"error_gain={self.error_gain}"
         )
+
+    def set_motion_limits(self, vmax: float | None = None, acceleration: float | None = None) -> None:
+        """Update motion planning limits and recreate planner with new values.
+        
+        Args:
+            vmax: Maximum velocity (rad/s). If None, keeps current value.
+            acceleration: Maximum acceleration (rad/s²). If None, keeps current value.
+        """
+        if vmax is not None:
+            if vmax <= 0:
+                raise ValueError("Maximum velocity must be positive")
+            self.vmax = vmax
+            
+        if acceleration is not None:
+            if acceleration <= 0:
+                raise ValueError("Acceleration must be positive")
+            self.acceleration = acceleration
+
+        # Store current state to reinitialize planner
+        current_pos = self.motion_planner.current_position
+        current_target = self.motion_planner.target_position
+
+        # Create new planner with updated limits
+        self.motion_planner = TrapezoidalPlanner(self.vmax, self.acceleration)
+        
+        # Restore state if planner was initialized
+        if current_pos is not None:
+            self.motion_planner.initialize(current_pos)
+            self.motion_planner.set_target(current_target)
+
+        logger.debug(
+            f"Updated motion limits - vmax: {self.vmax}, acceleration: {self.acceleration}"
+        )
+
 
     def reset(self) -> None:
         """Reset the motion planner state."""
@@ -206,9 +253,6 @@ class TrapezoidalPlanner:
 
         # Distance needed to stop
         stopping_distance = (self.current_velocity ** 2) / (2 * self.acceleration)
-
-        print(f"Position error: {position_error}")
-        print(f"Stopping distance: {stopping_distance}")
 
         # Decision: Accelerate, cruise, or decelerate
         if abs(position_error) > stopping_distance:
