@@ -398,6 +398,10 @@ class MujocoSimulator:
 
         mujoco.mj_resetData(self._model, self._data)
 
+        for actuator in self._actuator_instances.values():
+            if actuator.is_stateful:
+                actuator.reset()
+
         # Resets qpos.
         qpos = np.zeros_like(self._data.qpos)
         if self._freejoint:

@@ -12,6 +12,10 @@ class BaseActuator:
     def is_stateful(self) -> bool:
         """Return whether this actuator maintains state between calls."""
         return False
+    
+    def reset(self) -> None:
+        """Reset any internal state."""
+        pass
 
     def get_ctrl(
         self,
@@ -88,6 +92,10 @@ class FeetechActuator(BaseActuator):
             f"error_gain={self.error_gain}"
         )
 
+    def reset(self) -> None:
+        """Reset the motion planner state."""
+        self.motion_planner = TrapezoidalPlanner(self.vmax, self.acceleration)
+
     def _validate_params(self):
         """Validate all required parameters are present with valid values."""
         required_params = {
@@ -120,19 +128,27 @@ class FeetechActuator(BaseActuator):
         dt: float | None = None,
 
     ) -> float:
+        if self.motion_planner.current_position is None:
+            # IMPORTANT: Create a new float value rather than potentially sharing memory with MuJoCo's state.
+            # MuJoCo's joint positions can be views into its internal memory, so we need to explicitly copy
+            # the value to avoid accidentally modifying MuJoCo's state when the planner updates its internal position.
+            initial_position = float(current_position)
+            logger.info(f"Initializing motion planner with position {initial_position}")
+            self.motion_planner.initialize(initial_position)
+
         # Use instance max_torque if none provided
-        if max_torque is None:
+        if max_torque is None: #TODO: This needs to be cleaned up
             max_torque = self.max_torque
 
         # Get target position from command
-        target_position = target_command.get("position", current_position)
+        target_position = target_command.get("position")
         self.motion_planner.set_target(target_position)
 
-        desired_position, desired_velocity = self.motion_planner.update(dt)
+        planned_position, planned_velocity = self.motion_planner.update(dt)
         
         # Calculate errors
-        pos_error = desired_position - current_position
-        vel_error = desired_velocity - current_velocity
+        pos_error = planned_position - current_position
+        vel_error = planned_velocity - current_velocity
 
         # Calculate duty cycle
         raw_duty = kp * self.error_gain * pos_error + kd * vel_error
@@ -146,8 +162,6 @@ class FeetechActuator(BaseActuator):
 
         # Clip to max torque
         torque = np.clip(torque, -max_torque, max_torque)
-        #print(f"torque: {torque}, max_torque: {max_torque}, duty: {duty}, voltage: {voltage}, torque: {torque}")
-
         return torque
 
 def create_actuator(actuator_type: str, params_path: Path) -> BaseActuator:
@@ -173,12 +187,18 @@ class TrapezoidalPlanner:
     def __init__(self, v_max: float, acceleration: float):
         self.v_max = v_max  # maximum velocity
         self.acceleration = acceleration  # constant acceleration
-        self.current_position = 0.0
+        self.current_position = None
         self.current_velocity = 0.0
         self.target_position = 0.0
 
+    def initialize(self, actual_position: float):
+        """Initialize planner with actual joint position"""
+        self.current_position = actual_position
+
+
     def set_target(self, target_position: float):
         self.target_position = target_position
+
 
     def update(self, dt: float):
         position_error = self.target_position - self.current_position
@@ -186,6 +206,9 @@ class TrapezoidalPlanner:
 
         # Distance needed to stop
         stopping_distance = (self.current_velocity ** 2) / (2 * self.acceleration)
+
+        print(f"Position error: {position_error}")
+        print(f"Stopping distance: {stopping_distance}")
 
         # Decision: Accelerate, cruise, or decelerate
         if abs(position_error) > stopping_distance:
