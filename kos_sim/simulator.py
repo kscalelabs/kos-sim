@@ -55,6 +55,12 @@ class ActuatorCommand(TypedDict):
     torque: NotRequired[float]
 
 
+@dataclass
+class GroundTruthObservation:
+    base_angular_velocity: tuple[float, float, float]
+    base_linear_velocity: tuple[float, float, float]
+
+
 def get_integrator(integrator: str) -> mujoco.mjtIntegrator:
     match integrator.lower():
         case "euler":
@@ -281,26 +287,7 @@ class MujocoSimulator:
         Returns:
             RGB image array (and optionally depth array) if depth=True
         """
-        # TODO: Use native mujoco renderder for offline and shiiiiiiiiit
         return np.zeros((480, 640, 3), dtype=np.uint8), None
-        # if self._render_mode != "offscreen" and self._render_enabled:
-        #     logger.warning("Capturing frames is more efficient in offscreen mode")
-
-        # if depth:
-        #     logger.warning("Depth is not currently supported")
-
-        # for marker in self._markers.values():
-        #     self._viewer.add_marker(**marker)
-
-        # if camid is not None:
-        #     if camid == -1:
-        #         self._viewer.handle.cam.type = mujoco.mjtCamera.mjCAMERA_FREE
-        #     else:
-        #         self._viewer.handle.cam.type = mujoco.mjtCamera.mjCAMERA_FIXED
-        #         self._viewer.handle.cam.fixedcamid = camid
-
-        # rgb = self._viewer.read_pixels()
-        # return rgb, None
 
     async def get_sensor_data(self, name: str) -> np.ndarray:
         """Get data from a named sensor."""
@@ -417,3 +404,10 @@ class MujocoSimulator:
     @property
     def timestep(self) -> float:
         return self._model.opt.timestep
+
+    async def get_ground_truth_observation(self) -> GroundTruthObservation:
+        """Get the ground truth observation."""
+        return GroundTruthObservation(
+            base_angular_velocity=self._data.cvel[1, 0:3],
+            base_linear_velocity=self._data.cvel[1, 3:6],
+        )
