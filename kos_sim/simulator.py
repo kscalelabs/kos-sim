@@ -253,6 +253,7 @@ class MujocoSimulator:
             logger.debug("Setting ctrl for actuator %s to %f", actuator_id, target_torque)
             self._data.ctrl[actuator_id] = target_torque
 
+
         # Step physics - allow other coroutines to run during computation
 
         # for some reason running forward before step makes it more stable.
@@ -371,10 +372,15 @@ class MujocoSimulator:
         joint_pos: dict[str, float] | None = None,
         joint_vel: dict[str, float] | None = None,
     ) -> None:
+        print(f"Resetting simulation to {xyz}, {quat}, {joint_pos}, {joint_vel}")
         """Reset simulation to specified or default state."""
         self._next_commands.clear()
 
         mujoco.mj_resetData(self._model, self._data)
+        self._data.ctrl[:] = 0.0
+        self._data.qfrc_applied[:] = 0.0
+        self._data.qfrc_bias[:] = 0.0
+        self._data.actuator_force[:] = 0.0
 
         # Resets qpos.
         qpos = np.zeros_like(self._data.qpos)
