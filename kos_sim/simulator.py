@@ -375,6 +375,10 @@ class MujocoSimulator:
         self._next_commands.clear()
 
         mujoco.mj_resetData(self._model, self._data)
+        self._data.ctrl[:] = 0.0
+        self._data.qfrc_applied[:] = 0.0
+        self._data.qfrc_bias[:] = 0.0
+        self._data.actuator_force[:] = 0.0
 
         # Resets qpos.
         qpos = np.zeros_like(self._data.qpos)
