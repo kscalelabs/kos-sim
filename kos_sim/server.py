@@ -16,12 +16,12 @@ import grpc
 from kos_protos import actuator_pb2_grpc, imu_pb2_grpc, process_manager_pb2_grpc, sim_pb2_grpc
 from kscale import K
 from kscale.web.gen.api import RobotURDFMetadataOutput
+from kscale.web.utils import get_robots_dir, should_refresh_file
 from mujoco_scenes.mjcf import list_scenes
 
 from kos_sim import logger
 from kos_sim.services import ActuatorService, IMUService, ProcessManagerService, SimService
 from kos_sim.simulator import MujocoSimulator
-from kos_sim.utils import get_sim_artifacts_path
 from kos_sim.video_recorder import VideoRecorder
 
 
@@ -192,9 +192,9 @@ class SimulationServer:
         await self.simulator.close()
 
 
-async def get_model_metadata(api: K, model_name: str) -> RobotURDFMetadataOutput:
-    model_path = get_sim_artifacts_path() / model_name / "metadata.json"
-    if model_path.exists():
+async def get_model_metadata(api: K, model_name: str, cache: bool = True) -> RobotURDFMetadataOutput:
+    model_path = get_robots_dir() / model_name / "metadata.json"
+    if cache and model_path.exists() and not should_refresh_file(model_path):
         return RobotURDFMetadataOutput.model_validate_json(model_path.read_text())
     model_path.parent.mkdir(parents=True, exist_ok=True)
     robot_class = await api.get_robot_class(model_name)
@@ -323,11 +323,6 @@ async def run_server() -> None:
     logger.info("Frame width: %d", frame_width)
     logger.info("Frame height: %d", frame_height)
     logger.info("No cache: %s", no_cache)
-
-    if no_cache:
-        metadata_path = get_sim_artifacts_path() / model_name / "metadata.json"
-        if metadata_path.exists():
-            metadata_path.unlink()
 
     if video_output_dir is not None:
         os.makedirs(video_output_dir, exist_ok=True)
