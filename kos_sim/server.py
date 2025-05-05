@@ -324,11 +324,6 @@ async def run_server() -> None:
     logger.info("Frame height: %d", frame_height)
     logger.info("No cache: %s", no_cache)
 
-    if no_cache:
-        metadata_path = get_sim_artifacts_path() / model_name / "metadata.json"
-        if metadata_path.exists():
-            metadata_path.unlink()
-
     if video_output_dir is not None:
         os.makedirs(video_output_dir, exist_ok=True)
 
