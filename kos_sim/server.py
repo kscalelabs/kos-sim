@@ -192,9 +192,9 @@ class SimulationServer:
         await self.simulator.close()
 
 
-async def get_model_metadata(api: K, model_name: str, no_cache: bool = False) -> RobotURDFMetadataOutput:
+async def get_model_metadata(api: K, model_name: str, cache: bool = True) -> RobotURDFMetadataOutput:
     model_path = get_robots_dir() / model_name / "metadata.json"
-    if model_path.exists() and (no_cache or not should_refresh_file(model_path)):
+    if cache and model_path.exists() and not should_refresh_file(model_path):
         return RobotURDFMetadataOutput.model_validate_json(model_path.read_text())
     model_path.parent.mkdir(parents=True, exist_ok=True)
     robot_class = await api.get_robot_class(model_name)
