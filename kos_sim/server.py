@@ -22,7 +22,6 @@ from mujoco_scenes.mjcf import list_scenes
 from kos_sim import logger
 from kos_sim.services import ActuatorService, IMUService, ProcessManagerService, SimService
 from kos_sim.simulator import MujocoSimulator
-from kos_sim.utils import get_sim_artifacts_path
 from kos_sim.video_recorder import VideoRecorder
 
 
