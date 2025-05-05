@@ -16,6 +16,7 @@ import grpc
 from kos_protos import actuator_pb2_grpc, imu_pb2_grpc, process_manager_pb2_grpc, sim_pb2_grpc
 from kscale import K
 from kscale.web.gen.api import RobotURDFMetadataOutput
+from kscale.web.utils import get_robots_dir, should_refresh_file
 from mujoco_scenes.mjcf import list_scenes
 
 from kos_sim import logger
@@ -192,9 +193,9 @@ class SimulationServer:
         await self.simulator.close()
 
 
-async def get_model_metadata(api: K, model_name: str) -> RobotURDFMetadataOutput:
-    model_path = get_sim_artifacts_path() / model_name / "metadata.json"
-    if model_path.exists():
+async def get_model_metadata(api: K, model_name: str, no_cache: bool = False) -> RobotURDFMetadataOutput:
+    model_path = get_robots_dir() / model_name / "metadata.json"
+    if model_path.exists() and (no_cache or not should_refresh_file(model_path)):
         return RobotURDFMetadataOutput.model_validate_json(model_path.read_text())
     model_path.parent.mkdir(parents=True, exist_ok=True)
     robot_class = await api.get_robot_class(model_name)
