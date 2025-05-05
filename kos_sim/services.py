@@ -321,7 +321,7 @@ class IMUService(imu_pb2_grpc.IMUServiceServicer):
         acc_name: str | None = "imu_acc",
         gyro_name: str | None = "imu_gyro",
         mag_name: str | None = "imu_mag",
-        quat_name: str | None = "base_link_quat",
+        quat_name: str | None = "imu_site_quat",
     ) -> None:
         self.simulator = simulator
         self.acc_name = acc_name
