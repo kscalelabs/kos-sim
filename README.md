@@ -24,6 +24,16 @@ python -m examples.kbot
 
 You should see the simulated K-Bot move in response to the client commands.
 
+## Running Local Assets
+
+``` bash
+# export the path to the local assets
+export KSCALE_ASSETS_PATH=$(pwd)/kscale-assets
+echo "Current working directory: $(pwd) | KSCALE_ASSETS_PATH: $KSCALE_ASSETS_PATH"
+
+kos-sim zbot-6dof-feet --local-assets
+```
+
 ## Possible Bugs
 
 If you find that your robot is jittering on the ground, try increasing `iterations` and `ls_iterations` in your mjcf options.
