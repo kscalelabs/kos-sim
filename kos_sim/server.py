@@ -3,6 +3,7 @@
 import argparse
 import asyncio
 import itertools
+import json
 import logging
 import os
 import time
@@ -10,6 +11,7 @@ import traceback
 from concurrent import futures
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TypeVar
 
 import colorlogging
 import grpc
@@ -59,10 +61,12 @@ class SimulationServerConfig:
     physics: PhysicsConfig
     model_path: str | Path
     model_metadata: RobotURDFMetadataOutput
+    actuator_params_path: str | Path
     mujoco_scene: str = "smooth"
     host: str = "localhost"
     port: int = 50051
     sleep_time: float = 1e-6
+    fixed_base: bool = False
 
 
 class SimulationServer:
@@ -73,6 +77,7 @@ class SimulationServer:
         self.simulator = MujocoSimulator(
             model_path=config.model_path,
             model_metadata=config.model_metadata,
+            actuator_params_path=config.actuator_params_path,
             dt=config.physics.dt,
             gravity=config.physics.gravity,
             render_mode="window" if config.rendering.render else "offscreen",
@@ -87,6 +92,7 @@ class SimulationServer:
             camera=config.rendering.camera,
             frame_width=config.rendering.frame_width,
             frame_height=config.rendering.frame_height,
+            fixed_base=config.fixed_base,
         )
         self.host = config.host
         self.port = config.port
@@ -213,13 +219,39 @@ async def serve(
     physics: PhysicsConfig = PhysicsConfig(),
     randomization: SimulationRandomizationConfig = SimulationRandomizationConfig(),
     mujoco_scene: str = "smooth",
+    local_assets: bool = False,
+    fixed_base: bool = False,
     no_cache: bool = False,
 ) -> None:
-    async with K() as api:
-        model_dir, model_metadata = await asyncio.gather(
-            api.download_and_extract_urdf(model_name, cache=(not no_cache)),
-            get_model_metadata(api, model_name),
-        )
+    if local_assets:
+        kscale_assets_path = os.getenv("KSCALE_ASSETS_PATH")
+        if not kscale_assets_path:
+            logger.error("KSCALE_ASSETS_PATH environment variable must be set when using --load-assets")
+            raise SystemExit(1)
+        
+        local_model_dir = Path(kscale_assets_path) / model_name
+        urdf_files = list(local_model_dir.glob("*.mjcf")) or list(local_model_dir.glob("*.xml"))
+        metadata_file = local_model_dir / "metadata.json"
+        actuator_params_path = Path(kscale_assets_path) / "actuators"
+        
+        if not (urdf_files and metadata_file.exists()):
+            logger.error(f"Required files not found in {local_model_dir}")
+            logger.error("Expected .mjcf/.xml file and metadata.json")
+            raise SystemExit(1)
+            
+        logger.info(f"Loading assets from local path: {local_model_dir}")
+        logger.info(f"Loading actuator params from: {actuator_params_path}")
+        with open(metadata_file, "r") as f:
+            model_metadata = RobotURDFMetadataOutput.model_validate_json(metadata_file.read_text())
+        model_dir = local_model_dir
+    else:
+        logger.info("Loading assets from KScale API")
+        actuator_params_path = ""
+        async with K() as api:
+            model_dir, model_metadata = await asyncio.gather(
+                api.download_and_extract_urdf(model_name, cache=(not no_cache)),
+                get_model_metadata(api, model_name),
+            )
 
     if physics.suspended:
         model_path = next(
@@ -243,6 +275,7 @@ async def serve(
     config = SimulationServerConfig(
         model_path=model_path,
         model_metadata=model_metadata,
+        actuator_params_path=actuator_params_path,
         physics=physics,
         rendering=rendering,
         randomization=randomization,
@@ -259,7 +292,7 @@ async def run_server() -> None:
     parser.add_argument("model_name", type=str, help="Name of the model to simulate")
     parser.add_argument("--host", type=str, default="localhost", help="Host to listen on")
     parser.add_argument("--port", type=int, default=50051, help="Port to listen on")
-    parser.add_argument("--dt", type=float, default=0.001, help="Simulation timestep")
+    parser.add_argument("--dt", type=float, default=0.002, help="Simulation timestep")
     parser.add_argument("--no-gravity", action="store_true", help="Disable gravity")
     parser.add_argument("--no-render", action="store_true", help="Disable rendering")
     parser.add_argument("--render-frequency", type=float, default=1, help="Render frequency (Hz)")
@@ -276,6 +309,7 @@ async def run_server() -> None:
     parser.add_argument("--video-output-dir", type=str, default="videos", help="Directory to save videos")
     parser.add_argument("--frame-width", type=int, default=640, help="Frame width")
     parser.add_argument("--frame-height", type=int, default=480, help="Frame height")
+    parser.add_argument("--local-assets", action="store_true", help="Load assets from KSCALE_ASSETS_PATH")
     parser.add_argument("--no-cache", action="store_true", help="Don't use cached metadata")
 
     args = parser.parse_args()
@@ -359,6 +393,7 @@ async def run_server() -> None:
         physics=physics,
         randomization=randomization,
         mujoco_scene=mujoco_scene,
+        local_assets=args.local_assets,
         no_cache=no_cache,
     )
 
