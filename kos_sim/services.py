@@ -90,6 +90,24 @@ class SimService(sim_pb2_grpc.SimulationServiceServicer):
     ) -> common_pb2.ActionResponse:
         raise NotImplementedError("Step is not implemented")
 
+    async def GetGroundTruthObservation(  # noqa: N802
+        self,
+        request: empty_pb2.Empty,
+        context: grpc.ServicerContext,
+    ) -> sim_pb2.GetGroundTruthObservationResponse:
+        """Get ground truth observation."""
+        try:
+            observation = await self.simulator.get_ground_truth_observation()
+            return sim_pb2.GetGroundTruthObservationResponse(
+                base_angular_velocity=observation.base_angular_velocity,
+                base_linear_velocity=observation.base_linear_velocity,
+            )
+        except Exception as e:
+            logger.error("GetGroundTruthObservation failed: %s", e)
+            context.set_code(grpc.StatusCode.INTERNAL)
+            context.set_details(str(e))
+            return sim_pb2.GetGroundTruthObservationResponse(error=common_pb2.Error(message=str(e)))
+
     async def SetParameters(  # noqa: N802
         self,
         request: sim_pb2.SetParametersRequest,

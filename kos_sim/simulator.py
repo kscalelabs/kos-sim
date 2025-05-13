@@ -55,6 +55,12 @@ class ActuatorCommand(TypedDict):
     torque: NotRequired[float]
 
 
+@dataclass
+class GroundTruthObservation:
+    base_angular_velocity: tuple[float, float, float]
+    base_linear_velocity: tuple[float, float, float]
+
+
 def get_integrator(integrator: str) -> mujoco.mjtIntegrator:
     match integrator.lower():
         case "euler":
@@ -402,3 +408,10 @@ class MujocoSimulator:
     @property
     def timestep(self) -> float:
         return self._model.opt.timestep
+
+    async def get_ground_truth_observation(self) -> GroundTruthObservation:
+        """Get the ground truth observation."""
+        return GroundTruthObservation(
+            base_angular_velocity=self._data.cvel[1, 0:3],
+            base_linear_velocity=self._data.cvel[1, 3:6],
+        )
